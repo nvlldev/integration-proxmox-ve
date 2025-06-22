@@ -1,0 +1,68 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Proxmox VE Configuration",
+        "description": "Enter your Proxmox VE server details to connect to the API.",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "auth_method": "Authentication Method",
+          "verify_ssl": "Verify SSL Certificate",
+          "update_interval": "Update Interval (seconds)"
+        },
+        "data_description": {
+          "host": "Proxmox VE server address and port (e.g., 192.168.1.100:8006)",
+          "username": "Username for authentication (e.g., root or root@pam)",
+          "auth_method": "Choose between password or token authentication",
+          "verify_ssl": "Enable SSL certificate verification",
+          "update_interval": "How often to update sensor data (10-3600 seconds, default: 30)"
+        }
+      },
+      "password": {
+        "title": "Password Authentication",
+        "description": "Enter your Proxmox VE password to complete the setup.",
+        "data": {
+          "password": "Password"
+        },
+        "data_description": {
+          "password": "Your Proxmox VE user password"
+        }
+      },
+      "token": {
+        "title": "Token Authentication",
+        "description": "Enter your Proxmox VE API token details to complete the setup.",
+        "data": {
+          "token_name": "Token Name",
+          "token_value": "Token Value"
+        },
+        "data_description": {
+          "token_name": "Name of your API token (e.g., homeassistant)",
+          "token_value": "The API token value"
+        }
+      }
+    },
+    "options": {
+      "step": {
+        "init": {
+          "title": "Proxmox VE Options",
+          "description": "Configure Proxmox VE integration options.",
+          "data": {
+            "update_interval": "Update Interval (seconds)"
+          },
+          "data_description": {
+            "update_interval": "How often to update sensor data (10-3600 seconds, default: 30)"
+          }
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Proxmox VE server",
+      "invalid_auth": "Invalid authentication credentials",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+} 
