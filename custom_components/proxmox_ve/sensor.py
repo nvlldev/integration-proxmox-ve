@@ -26,6 +26,45 @@ from .api import ProxmoxClient
 
 _LOGGER = logging.getLogger(__name__)
 
+# Add a mapping for proper capitalization of known abbreviations
+_ABBREVIATION_MAP = {
+    'cpu': 'CPU',
+    'vm': 'VM',
+    'lxc': 'LXC',
+    'id': 'ID',
+    'mhz': 'MHz',
+    'gb': 'GB',
+    'mb': 'MB',
+    'kb': 'KB',
+    'io': 'IO',
+    'api': 'API',
+    've': 'VE',
+    'ssd': 'SSD',
+    'hdd': 'HDD',
+    'os': 'OS',
+    'ram': 'RAM',
+    'ip': 'IP',
+    'mac': 'MAC',
+    'lvm': 'LVM',
+    'nvme': 'NVMe',
+    'sata': 'SATA',
+    'scsi': 'SCSI',
+    'uuid': 'UUID',
+    'vmid': 'VMID',
+    'qemu': 'QEMU',
+    'lxc': 'LXC',
+    'proxmox': 'Proxmox',
+    've': 'VE',
+}
+
+def _prettify_attr_name(attr_name: str) -> str:
+    # Split by underscores, capitalize each part, but use abbreviation map if present
+    parts = attr_name.split('_')
+    pretty = []
+    for part in parts:
+        lower = part.lower()
+        pretty.append(_ABBREVIATION_MAP.get(lower, part.capitalize()))
+    return ' '.join(pretty)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -458,7 +497,10 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
     """A generic sensor for a Proxmox VE device attribute."""
     def __init__(self, coordinator, entry_id, host, device_type, device_id, device_name, attr_name, attr_value, device_info):
         super().__init__(coordinator)
-        self._attr_name = f"Proxmox VE {device_type} {device_name} {attr_name.replace('_', ' ').title()}"
+        # Prettify device_type and attr_name
+        pretty_device_type = _ABBREVIATION_MAP.get(device_type.lower(), device_type)
+        pretty_attr_name = _prettify_attr_name(attr_name)
+        self._attr_name = f"Proxmox VE {pretty_device_type} {device_name} {pretty_attr_name}"
         self._attr_unique_id = f"proxmox_ve_{device_type.lower()}_{device_id}_{attr_name}_{entry_id}"
         self._attr_native_value = attr_value
         self._attr_device_info = device_info
