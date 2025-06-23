@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    PERCENT,
+    PERCENTAGE,
     UnitOfFrequency,
     UnitOfInformation,
     UnitOfTime,
@@ -522,7 +522,7 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         self._attr_icon = None
 
         if "percent" in attr_name:
-            self._attr_unit_of_measurement = PERCENT
+            self._attr_unit_of_measurement = PERCENTAGE
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_icon = "mdi:percent"
         elif "memory" in attr_name and "bytes" in attr_name:
