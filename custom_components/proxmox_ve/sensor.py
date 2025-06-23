@@ -391,6 +391,7 @@ async def async_setup_entry(
                     "disk_used_bytes": node.get("disk", 0),
                     "disk_total_bytes": node.get("maxdisk", 0),
                     "uptime_seconds": node.get("uptime", 0),
+                    "memory_usage_percent": (float(node.get("mem", 0)) / float(node.get("maxmem", 1)) * 100) if node.get("maxmem", 0) else 0.0,
                 }
                 # Add load/cpu info if available
                 node_load_data = coordinator.data.get("node_load_data", {}).get(node_name, {})
@@ -432,6 +433,7 @@ async def async_setup_entry(
                     "disk_total_bytes": vm.get("maxdisk", 0),
                     "uptime_seconds": vm.get("uptime", 0),
                     "node_name": node_name,
+                    "memory_usage_percent": (float(vm.get("mem", 0)) / float(vm.get("maxmem", 1)) * 100) if vm.get("maxmem", 0) else 0.0,
                 }
                 for attr, value in vm_attrs.items():
                     entities.append(ProxmoxBaseAttributeSensor(
@@ -461,6 +463,7 @@ async def async_setup_entry(
                     "disk_total_bytes": container.get("maxdisk", 0),
                     "uptime_seconds": container.get("uptime", 0),
                     "node_name": node_name,
+                    "memory_usage_percent": (float(container.get("mem", 0)) / float(container.get("maxmem", 1)) * 100) if container.get("maxmem", 0) else 0.0,
                 }
                 for attr, value in container_attrs.items():
                     entities.append(ProxmoxBaseAttributeSensor(
