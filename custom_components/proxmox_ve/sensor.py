@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
+from homeassistant.helpers.device_registry import DeviceInfo
 from proxmoxer.core import AuthenticationError
 from requests.exceptions import ConnectionError
 
@@ -327,31 +328,107 @@ async def async_setup_entry(
 
     # Create entities based on available data
     entities = []
-    
     _LOGGER.debug("Coordinator data keys: %s", list(coordinator.data.keys()) if coordinator.data else "None")
-    
     try:
         if coordinator.data and "nodes" in coordinator.data:
-            _LOGGER.debug("Creating %s node sensors", len(coordinator.data["nodes"]))
+            _LOGGER.debug("Creating node attribute sensors")
             for node in coordinator.data["nodes"]:
-                _LOGGER.debug("Creating node sensor for: %s", node.get("node", "unknown"))
-                entities.append(ProxmoxNodeSensor(coordinator, node, entry.entry_id, entry.data["host"]))
-        
+                node_name = node.get("node", "unknown")
+                node_id = node_name
+                host = entry.data["host"]
+                # Device info for node
+                node_device_info = DeviceInfo(
+                    identifiers={(DOMAIN, f"node_{host}_{node_name}")},
+                    name=f"Proxmox VE Node {node_name}",
+                    manufacturer="Proxmox",
+                    model="Node",
+                    configuration_url=f"https://{host}/"
+                )
+                # Node attributes
+                node_attrs = {
+                    "cpu_usage_percent": node.get("cpu", 0),
+                    "memory_used_bytes": node.get("mem", 0),
+                    "memory_total_bytes": node.get("maxmem", 0),
+                    "disk_used_bytes": node.get("disk", 0),
+                    "disk_total_bytes": node.get("maxdisk", 0),
+                    "uptime_seconds": node.get("uptime", 0),
+                }
+                # Add load/cpu info if available
+                node_load_data = coordinator.data.get("node_load_data", {}).get(node_name, {})
+                node_attrs.update({
+                    "load_average_1min": float(node_load_data.get("loadavg_1min", 0)),
+                    "load_average_5min": float(node_load_data.get("loadavg_5min", 0)),
+                    "load_average_15min": float(node_load_data.get("loadavg_15min", 0)),
+                    "cpu_frequency_mhz": int(node_load_data.get("cpu_frequency", 0)),
+                    "cpu_cores": int(node_load_data.get("cpu_cores", 0)),
+                    "cpu_sockets": int(node_load_data.get("cpu_sockets", 0)),
+                    "cpu_total_logical": int(node_load_data.get("cpu_total", 0)),
+                    "cpu_model": node_load_data.get("cpu_model", "Unknown"),
+                })
+                for attr, value in node_attrs.items():
+                    entities.append(ProxmoxBaseAttributeSensor(
+                        coordinator, entry.entry_id, host, "Node", node_id, node_name, attr, value, node_device_info
+                    ))
         if coordinator.data and "vms" in coordinator.data:
-            _LOGGER.debug("Creating %s VM sensors", len(coordinator.data["vms"]))
+            _LOGGER.debug("Creating VM attribute sensors")
             for vm in coordinator.data["vms"]:
-                _LOGGER.debug("Creating VM sensor for: %s (ID: %s)", vm.get("name", "unknown"), vm.get("vmid", "unknown"))
-                entities.append(ProxmoxVmSensor(coordinator, vm, entry.entry_id, entry.data["host"]))
-        
+                vmid = vm["vmid"]
+                vm_name = vm.get("name", f"VM {vmid}")
+                node_name = vm.get("node", "unknown")
+                host = entry.data["host"]
+                # Device info for VM
+                vm_device_info = DeviceInfo(
+                    identifiers={(DOMAIN, f"vm_{host}_{node_name}_{vmid}")},
+                    name=f"Proxmox VE VM {vm_name}",
+                    manufacturer="Proxmox",
+                    model="VM",
+                    via_device=(DOMAIN, f"node_{host}_{node_name}"),
+                    configuration_url=f"https://{host}/"
+                )
+                vm_attrs = {
+                    "cpu_usage_percent": vm.get("cpu", 0),
+                    "memory_used_bytes": vm.get("mem", 0),
+                    "memory_total_bytes": vm.get("maxmem", 0),
+                    "disk_used_bytes": vm.get("disk", 0),
+                    "disk_total_bytes": vm.get("maxdisk", 0),
+                    "uptime_seconds": vm.get("uptime", 0),
+                    "node_name": node_name,
+                }
+                for attr, value in vm_attrs.items():
+                    entities.append(ProxmoxBaseAttributeSensor(
+                        coordinator, entry.entry_id, host, "VM", vmid, vm_name, attr, value, vm_device_info
+                    ))
         if coordinator.data and "containers" in coordinator.data:
-            _LOGGER.debug("Creating %s container sensors", len(coordinator.data["containers"]))
+            _LOGGER.debug("Creating container attribute sensors")
             for container in coordinator.data["containers"]:
                 container_id = container.get("id") or container.get("vmid")
-                _LOGGER.debug("Creating container sensor for: %s (ID: %s)", container.get("name", "unknown"), container_id)
-                _LOGGER.debug("Container data: %s", container)
-                entities.append(ProxmoxContainerSensor(coordinator, container, entry.entry_id, entry.data["host"]))
+                container_name = container.get("name", f"Container {container_id}")
+                node_name = container.get("node", "unknown")
+                host = entry.data["host"]
+                # Device info for container
+                container_device_info = DeviceInfo(
+                    identifiers={(DOMAIN, f"container_{host}_{node_name}_{container_id}")},
+                    name=f"Proxmox VE Container {container_name}",
+                    manufacturer="Proxmox",
+                    model="Container",
+                    via_device=(DOMAIN, f"node_{host}_{node_name}"),
+                    configuration_url=f"https://{host}/"
+                )
+                container_attrs = {
+                    "cpu_usage_percent": container.get("cpu", 0),
+                    "memory_used_bytes": container.get("mem", 0),
+                    "memory_total_bytes": container.get("maxmem", 0),
+                    "disk_used_bytes": container.get("disk", 0),
+                    "disk_total_bytes": container.get("maxdisk", 0),
+                    "uptime_seconds": container.get("uptime", 0),
+                    "node_name": node_name,
+                }
+                for attr, value in container_attrs.items():
+                    entities.append(ProxmoxBaseAttributeSensor(
+                        coordinator, entry.entry_id, host, "Container", container_id, container_name, attr, value, container_device_info
+                    ))
     except Exception as e:
-        _LOGGER.error("Error creating entities: %s", e)
+        _LOGGER.error("Error creating attribute entities: %s", e)
 
     if entities:
         _LOGGER.info("Creating %s Proxmox VE entities", len(entities))
@@ -377,190 +454,18 @@ async def async_setup_entry(
             _LOGGER.error("No data available from coordinator - check API connection")
 
 
-class ProxmoxNodeSensor(CoordinatorEntity, SensorEntity):
-    """A sensor for a Proxmox VE node."""
-
-    def __init__(self, coordinator, node, entry_id, host):
-        """Initialize the sensor."""
+class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
+    """A generic sensor for a Proxmox VE device attribute."""
+    def __init__(self, coordinator, entry_id, host, device_type, device_id, device_name, attr_name, attr_value, device_info):
         super().__init__(coordinator)
-        self._node_name = node["node"]
-        self._attr_name = f"Proxmox VE Node {self._node_name}"
-        self._attr_unique_id = f"proxmox_ve_node_{self._node_name}_{entry_id}"
-        self._host = host
-
-    @property
-    def node(self):
-        """Return the node data."""
-        if not self.coordinator.data or "nodes" not in self.coordinator.data:
-            return None
-        return next(
-            (
-                node
-                for node in self.coordinator.data["nodes"]
-                if node["node"] == self._node_name
-            ),
-            None,
-        )
+        self._attr_name = f"Proxmox VE {device_type} {device_name} {attr_name.replace('_', ' ').title()}"
+        self._attr_unique_id = f"proxmox_ve_{device_type.lower()}_{device_id}_{attr_name}_{entry_id}"
+        self._attr_native_value = attr_value
+        self._attr_device_info = device_info
+        self._attr_icon = None  # Optionally set icons per attribute
+        self._attr_unit_of_measurement = None  # Optionally set units per attribute
+        self._raw_attr_name = attr_name
 
     @property
     def native_value(self):
-        """Return the state of the sensor."""
-        node_data = self.node
-        if not node_data:
-            return "unknown"
-        return node_data.get("status", "unknown")
-
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the node."""
-        if not self.node:
-            return {}
-        
-        # Get load data for this node
-        load_data = {}
-        if (self.coordinator.data and 
-            "node_load_data" in self.coordinator.data and 
-            self._node_name in self.coordinator.data["node_load_data"]):
-            load_data = self.coordinator.data["node_load_data"][self._node_name]
-            _LOGGER.debug("Found load data for node %s: %s", self._node_name, load_data)
-        else:
-            _LOGGER.debug("No load data found for node %s", self._node_name)
-        
-        # Ensure loadavg values are numbers
-        loadavg_1min = float(load_data.get("loadavg_1min", 0))
-        loadavg_5min = float(load_data.get("loadavg_5min", 0))
-        loadavg_15min = float(load_data.get("loadavg_15min", 0))
-        
-        attributes = {
-            "cpu_usage_percent": self.node.get("cpu", 0),
-            "memory_used_bytes": self.node.get("mem", 0),
-            "memory_total_bytes": self.node.get("maxmem", 0),
-            "disk_used_bytes": self.node.get("disk", 0),
-            "disk_total_bytes": self.node.get("maxdisk", 0),
-            "uptime_seconds": self.node.get("uptime", 0),
-            "load_average_1min": loadavg_1min,
-            "load_average_5min": loadavg_5min,
-            "load_average_15min": loadavg_15min,
-            "cpu_frequency_mhz": int(load_data.get("cpu_frequency", 0)),
-            "cpu_cores": int(load_data.get("cpu_cores", 0)),
-            "cpu_sockets": int(load_data.get("cpu_sockets", 0)),
-            "cpu_total_logical": int(load_data.get("cpu_total", 0)),
-            "cpu_model": load_data.get("cpu_model", "Unknown"),
-        }
-        
-        _LOGGER.debug("Node %s attributes: %s", self._node_name, attributes)
-        return attributes
-
-
-class ProxmoxVmSensor(CoordinatorEntity, SensorEntity):
-    """A sensor for a Proxmox VE VM."""
-
-    def __init__(self, coordinator, vm, entry_id, host):
-        """Initialize the sensor."""
-        super().__init__(coordinator)
-        self._vmid = vm["vmid"]
-        self._vm_name = vm.get("name", f"VM {self._vmid}")
-        self._attr_name = f"Proxmox VE VM {self._vm_name}"
-        self._attr_unique_id = f"proxmox_ve_vm_{self._vmid}_{entry_id}"
-        self._host = host
-
-    @property
-    def vm(self):
-        """Return the vm data."""
-        if not self.coordinator.data or "vms" not in self.coordinator.data:
-            return None
-        return next(
-            (vm for vm in self.coordinator.data["vms"] if vm["vmid"] == self._vmid),
-            None,
-        )
-
-    @property
-    def native_value(self):
-        """Return the state of the sensor."""
-        vm_data = self.vm
-        if not vm_data:
-            return "unknown"
-        return vm_data.get("status", "unknown")
-
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the vm."""
-        if not self.vm:
-            return {}
-        
-        return {
-            "cpu_usage_percent": self.vm.get("cpu", 0),
-            "memory_used_bytes": self.vm.get("mem", 0),
-            "memory_total_bytes": self.vm.get("maxmem", 0),
-            "disk_used_bytes": self.vm.get("disk", 0),
-            "disk_total_bytes": self.vm.get("maxdisk", 0),
-            "uptime_seconds": self.vm.get("uptime", 0),
-            "node_name": self.vm.get("node", "unknown"),
-        }
-
-
-class ProxmoxContainerSensor(CoordinatorEntity, SensorEntity):
-    """A sensor for a Proxmox VE container."""
-
-    def __init__(self, coordinator, container, entry_id, host):
-        """Initialize the sensor."""
-        super().__init__(coordinator)
-        # Handle both 'id' and 'vmid' field names for container ID
-        self._container_id = container.get("id") or container.get("vmid")
-        if self._container_id is None:
-            _LOGGER.error("Container missing both 'id' and 'vmid' fields: %s", container)
-            self._container_id = "unknown"
-        
-        self._container_name = container.get("name", f"Container {self._container_id}")
-        self._attr_name = f"Proxmox VE Container {self._container_name}"
-        self._attr_unique_id = f"proxmox_ve_container_{self._container_id}_{entry_id}"
-        self._host = host
-        _LOGGER.debug("Initialized container sensor: ID=%s, Name=%s, UniqueID=%s", 
-                     self._container_id, self._container_name, self._attr_unique_id)
-
-    @property
-    def container(self):
-        """Return the container data."""
-        if not self.coordinator.data or "containers" not in self.coordinator.data:
-            _LOGGER.debug("No container data available for container ID %s", self._container_id)
-            return None
-        
-        container_data = next(
-            (
-                container
-                for container in self.coordinator.data["containers"]
-                if (container.get("id") or container.get("vmid")) == self._container_id
-            ),
-            None,
-        )
-        
-        if container_data is None:
-            _LOGGER.debug("Container with ID %s not found in coordinator data", self._container_id)
-            _LOGGER.debug("Available container IDs: %s", 
-                         [(c.get("id") or c.get("vmid"), "unknown") for c in self.coordinator.data["containers"]])
-        
-        return container_data
-
-    @property
-    def native_value(self):
-        """Return the state of the sensor."""
-        container_data = self.container
-        if not container_data:
-            return "unknown"
-        return container_data.get("status", "unknown")
-
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the container."""
-        if not self.container:
-            return {}
-        
-        return {
-            "cpu_usage_percent": self.container.get("cpu", 0),
-            "memory_used_bytes": self.container.get("mem", 0),
-            "memory_total_bytes": self.container.get("maxmem", 0),
-            "disk_used_bytes": self.container.get("disk", 0),
-            "disk_total_bytes": self.container.get("maxdisk", 0),
-            "uptime_seconds": self.container.get("uptime", 0),
-            "node_name": self.container.get("node", "unknown"),
-        }
+        return self._attr_native_value
