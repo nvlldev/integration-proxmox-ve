@@ -391,7 +391,7 @@ async def async_setup_entry(
                 )
                 # Node attributes
                 node_attrs = {
-                    "cpu_usage_percent": node.get("cpu", 0),
+                    "cpu_usage_percent": float(node.get("cpu", 0)) * 100,
                     "memory_used_bytes": node.get("mem", 0),
                     "memory_total_bytes": node.get("maxmem", 0),
                     "disk_used_bytes": node.get("disk", 0),
@@ -432,7 +432,7 @@ async def async_setup_entry(
                     configuration_url=f"https://{host}/"
                 )
                 vm_attrs = {
-                    "cpu_usage_percent": vm.get("cpu", 0),
+                    "cpu_usage_percent": float(vm.get("cpu", 0)) * 100,
                     "memory_used_bytes": vm.get("mem", 0),
                     "memory_total_bytes": vm.get("maxmem", 0),
                     "disk_used_bytes": vm.get("disk", 0),
@@ -462,7 +462,7 @@ async def async_setup_entry(
                     configuration_url=f"https://{host}/"
                 )
                 container_attrs = {
-                    "cpu_usage_percent": container.get("cpu", 0),
+                    "cpu_usage_percent": float(container.get("cpu", 0)) * 100,
                     "memory_used_bytes": container.get("mem", 0),
                     "memory_total_bytes": container.get("maxmem", 0),
                     "disk_used_bytes": container.get("disk", 0),
