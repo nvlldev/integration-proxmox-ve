@@ -11,10 +11,10 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    PERCENTAGE,
     UnitOfFrequency,
     UnitOfInformation,
     UnitOfTime,
+    PERCENTAGE,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -518,31 +518,32 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         # Set state_class, device_class, unit_of_measurement, and icon
         self._attr_state_class = None
         self._attr_device_class = None
-        self._attr_unit_of_measurement = None
+        self._attr_native_unit_of_measurement = None
         self._attr_icon = None
 
         if "percent" in attr_name:
-            self._attr_unit_of_measurement = PERCENTAGE
+            self._attr_native_unit_of_measurement = PERCENTAGE
+            self._attr_device_class = SensorDeviceClass.POWER_FACTOR
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_icon = "mdi:percent"
         elif "memory" in attr_name and "bytes" in attr_name:
             self._attr_device_class = SensorDeviceClass.DATA_SIZE
-            self._attr_unit_of_measurement = UnitOfInformation.BYTES
+            self._attr_native_unit_of_measurement = UnitOfInformation.BYTES
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_icon = "mdi:memory"
         elif "disk" in attr_name and "bytes" in attr_name:
             self._attr_device_class = SensorDeviceClass.DATA_SIZE
-            self._attr_unit_of_measurement = UnitOfInformation.BYTES
+            self._attr_native_unit_of_measurement = UnitOfInformation.BYTES
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_icon = "mdi:harddisk"
         elif "uptime" in attr_name:
             self._attr_device_class = SensorDeviceClass.DURATION
-            self._attr_unit_of_measurement = UnitOfTime.SECONDS
+            self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_icon = "mdi:timer-sand"
         elif "frequency" in attr_name:
             self._attr_device_class = SensorDeviceClass.FREQUENCY
-            self._attr_unit_of_measurement = UnitOfFrequency.MEGAHERTZ
+            self._attr_native_unit_of_measurement = UnitOfFrequency.MEGAHERTZ
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_icon = "mdi:chip"
         elif "load_average" in attr_name:
