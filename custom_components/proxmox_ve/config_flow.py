@@ -22,7 +22,6 @@ from .const import (
     MAX_UPDATE_INTERVAL,
     MIN_UPDATE_INTERVAL,
 )
-from .coordinator import ProxmoxVEDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,12 +66,19 @@ STEP_TOKEN_DATA_SCHEMA = vol.Schema(
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
-    from proxmoxer.core import AuthenticationError
-    from requests.exceptions import ConnectionError, Timeout
+    from .api_client import ProxmoxVEAPIClient
+    from .exceptions import ProxmoxVEAuthenticationError, ProxmoxVEConnectionError
     
     try:
-        coordinator = ProxmoxVEDataUpdateCoordinator(hass, data)
-        await coordinator.async_config_entry_first_refresh()
+        # Test connection using the API client directly
+        client = ProxmoxVEAPIClient(hass, data)
+        await client.async_authenticate()
+        
+        # Try to get basic data to verify connection works
+        nodes = await client.async_get_nodes()
+        
+        # Clean up
+        await client.async_close()
         
         # If we get here, the connection was successful
         info = {
@@ -81,10 +87,10 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
         }
         return info
         
-    except AuthenticationError as err:
+    except ProxmoxVEAuthenticationError as err:
         _LOGGER.error("Authentication failed: %s", err)
         raise InvalidAuth from err
-    except (ConnectionError, Timeout) as err:
+    except ProxmoxVEConnectionError as err:
         _LOGGER.error("Cannot connect: %s", err)
         raise CannotConnect from err
     except Exception as err:
