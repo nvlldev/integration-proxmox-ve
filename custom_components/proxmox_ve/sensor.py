@@ -68,7 +68,9 @@ NODE_SENSORS = [
     "memory_used_bytes", 
     "memory_total_bytes",
     "disk_used_bytes",
-    "disk_total_bytes", 
+    "disk_total_bytes",
+    "disk_usage_percent",
+    "disk_free_percent", 
     "uptime_seconds",
     "memory_usage_percent",
     "load_average_1min",
@@ -87,6 +89,8 @@ VM_SENSORS = [
     "memory_total_bytes", 
     "disk_used_bytes",
     "disk_total_bytes",
+    "disk_usage_percent",
+    "disk_free_percent",
     "uptime_seconds",
     "node_name",
     "memory_usage_percent",
@@ -98,6 +102,8 @@ CONTAINER_SENSORS = [
     "memory_total_bytes",
     "disk_used_bytes", 
     "disk_total_bytes",
+    "disk_usage_percent",
+    "disk_free_percent",
     "uptime_seconds",
     "node_name",
     "memory_usage_percent",
@@ -281,6 +287,11 @@ class ProxmoxVEBackwardCompatibleSensor(CoordinatorEntity[ProxmoxVEDataUpdateCoo
             self._attr_native_unit_of_measurement = UnitOfInformation.BYTES
             self._attr_state_class = SensorStateClass.MEASUREMENT
             self._attr_icon = "mdi:harddisk"
+        elif "disk" in self._raw_attr_name and "percent" in self._raw_attr_name:
+            self._attr_native_unit_of_measurement = PERCENTAGE
+            self._attr_device_class = SensorDeviceClass.POWER_FACTOR
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+            self._attr_icon = "mdi:harddisk"
         elif "uptime" in self._raw_attr_name:
             self._attr_device_class = SensorDeviceClass.DURATION
             self._attr_native_unit_of_measurement = UnitOfTime.SECONDS
@@ -386,6 +397,14 @@ class ProxmoxVEBackwardCompatibleSensor(CoordinatorEntity[ProxmoxVEDataUpdateCoo
             return node_data.get("disk", 0)
         elif self._raw_attr_name == "disk_total_bytes":
             return node_data.get("maxdisk", 0)
+        elif self._raw_attr_name == "disk_usage_percent":
+            disk_used = float(node_data.get("disk", 0))
+            disk_total = float(node_data.get("maxdisk", 1))
+            return (disk_used / disk_total * 100) if disk_total > 0 else 0.0
+        elif self._raw_attr_name == "disk_free_percent":
+            disk_used = float(node_data.get("disk", 0))
+            disk_total = float(node_data.get("maxdisk", 1))
+            return ((disk_total - disk_used) / disk_total * 100) if disk_total > 0 else 0.0
         elif self._raw_attr_name == "uptime_seconds":
             return node_data.get("uptime", 0)
         elif self._raw_attr_name == "memory_usage_percent":
@@ -433,6 +452,14 @@ class ProxmoxVEBackwardCompatibleSensor(CoordinatorEntity[ProxmoxVEDataUpdateCoo
             return vm_data.get("disk", 0)
         elif self._raw_attr_name == "disk_total_bytes":
             return vm_data.get("maxdisk", 0)
+        elif self._raw_attr_name == "disk_usage_percent":
+            disk_used = float(vm_data.get("disk", 0))
+            disk_total = float(vm_data.get("maxdisk", 1))
+            return (disk_used / disk_total * 100) if disk_total > 0 else 0.0
+        elif self._raw_attr_name == "disk_free_percent":
+            disk_used = float(vm_data.get("disk", 0))
+            disk_total = float(vm_data.get("maxdisk", 1))
+            return ((disk_total - disk_used) / disk_total * 100) if disk_total > 0 else 0.0
         elif self._raw_attr_name == "uptime_seconds":
             return vm_data.get("uptime", 0)
         elif self._raw_attr_name == "node_name":
@@ -455,6 +482,14 @@ class ProxmoxVEBackwardCompatibleSensor(CoordinatorEntity[ProxmoxVEDataUpdateCoo
             return container_data.get("disk", 0)
         elif self._raw_attr_name == "disk_total_bytes":
             return container_data.get("maxdisk", 0)
+        elif self._raw_attr_name == "disk_usage_percent":
+            disk_used = float(container_data.get("disk", 0))
+            disk_total = float(container_data.get("maxdisk", 1))
+            return (disk_used / disk_total * 100) if disk_total > 0 else 0.0
+        elif self._raw_attr_name == "disk_free_percent":
+            disk_used = float(container_data.get("disk", 0))
+            disk_total = float(container_data.get("maxdisk", 1))
+            return ((disk_total - disk_used) / disk_total * 100) if disk_total > 0 else 0.0
         elif self._raw_attr_name == "uptime_seconds":
             return container_data.get("uptime", 0)
         elif self._raw_attr_name == "node_name":
