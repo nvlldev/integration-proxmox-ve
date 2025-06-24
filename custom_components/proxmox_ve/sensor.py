@@ -118,10 +118,18 @@ async def async_setup_entry(
         host = entry.data["host"]
         port = entry.data.get("port", 8006)
         
-        # Add node sensors - exact same logic as old integration
+        # Add node sensors - only for available nodes
         for node in coordinator.data.get("nodes", []):
             node_name = node.get("node", "unknown")
             node_id = node_name
+            node_available = node.get("available", True)  # Default to True for backward compatibility
+            
+            # Log node availability status
+            if not node_available:
+                _LOGGER.warning("Node %s is not available, skipping sensor creation", node_name)
+                continue
+                
+            _LOGGER.debug("Creating sensors for available node %s", node_name)
             
             # Device info for node - exact same as old integration
             node_device_info = DeviceInfo(
@@ -293,6 +301,20 @@ class ProxmoxVEBackwardCompatibleSensor(CoordinatorEntity[ProxmoxVEDataUpdateCoo
             self._attr_icon = "mdi:server"
         elif self._raw_attr_name == "cpu_model":
             self._attr_icon = "mdi:chip"
+
+    @property
+    def available(self) -> bool:
+        """Return if entity is available."""
+        if not self.coordinator.last_update_success:
+            return False
+        
+        # For node sensors, also check if the specific node is available
+        if self._device_type == "Node":
+            device_data = self._get_device_data()
+            if device_data:
+                return device_data.get("available", True)
+        
+        return True
 
     @property
     def should_poll(self) -> bool:

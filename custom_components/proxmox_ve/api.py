@@ -82,36 +82,21 @@ class ProxmoxVEClient:
             "containers": [],
             "load_average": [0.0, 0.0, 0.0],
             "cpu_info": {},
+            "available": False,  # Track node availability
         }
         
         _LOGGER.debug("Fetching data for node %s", node_name)
         
-        # Get VMs (QEMU) for this node
-        try:
-            vms = self.api.nodes(node_name).qemu.get()
-            for vm in vms:
-                vm["node"] = node_name
-                vm["type"] = "qemu"
-            node_data["vms"] = vms
-            _LOGGER.debug("Fetched %d VMs from node %s", len(vms), node_name)
-        except Exception as e:
-            _LOGGER.warning("Failed to get VMs from node %s: %s", node_name, e)
-        
-        # Get containers (LXC) for this node  
-        try:
-            containers = self.api.nodes(node_name).lxc.get()
-            for container in containers:
-                container["node"] = node_name
-                container["type"] = "lxc"
-            node_data["containers"] = containers
-            _LOGGER.debug("Fetched %d containers from node %s", len(containers), node_name)
-        except Exception as e:
-            _LOGGER.warning("Failed to get containers from node %s: %s", node_name, e)
+        # Track how many API calls succeed - need at least one success for availability
+        successful_calls = 0
+        total_calls = 0
         
         # Get node status for load averages and CPU info
+        total_calls += 1
         try:
             status = self.api.nodes(node_name).status.get()
             if status:
+                successful_calls += 1
                 # Extract load averages if available
                 load_avg = status.get("loadavg", [0.0, 0.0, 0.0])
                 if isinstance(load_avg, list) and len(load_avg) >= 3:
@@ -122,9 +107,47 @@ class ProxmoxVEClient:
                     "cpuinfo": status.get("cpuinfo", {}),
                     "cpu_freq": status.get("cpu_freq", 0),
                 }
-                _LOGGER.debug("Fetched status data for node %s", node_name)
+                _LOGGER.debug("Node %s status call succeeded", node_name)
         except Exception as e:
             _LOGGER.warning("Failed to get status from node %s: %s", node_name, e)
+        
+        # Get VMs (QEMU) for this node
+        total_calls += 1
+        try:
+            vms = self.api.nodes(node_name).qemu.get()
+            successful_calls += 1
+            for vm in vms:
+                vm["node"] = node_name
+                vm["type"] = "qemu"
+            node_data["vms"] = vms
+            _LOGGER.debug("Fetched %d VMs from node %s", len(vms), node_name)
+        except Exception as e:
+            _LOGGER.warning("Failed to get VMs from node %s: %s", node_name, e)
+        
+        # Get containers (LXC) for this node  
+        total_calls += 1
+        try:
+            containers = self.api.nodes(node_name).lxc.get()
+            successful_calls += 1
+            for container in containers:
+                container["node"] = node_name
+                container["type"] = "lxc"
+            node_data["containers"] = containers
+            _LOGGER.debug("Fetched %d containers from node %s", len(containers), node_name)
+        except Exception as e:
+            _LOGGER.warning("Failed to get containers from node %s: %s", node_name, e)
+        
+        # Node is considered available if the status call succeeds
+        # This means the node is responsive and we can show node-level data
+        # even if VM/container calls timeout
+        node_data["available"] = successful_calls >= 1
+        
+        if node_data["available"]:
+            _LOGGER.debug("Node %s marked as available (%d/%d calls succeeded)", 
+                         node_name, successful_calls, total_calls)
+        else:
+            _LOGGER.warning("Node %s marked as unavailable (%d/%d calls succeeded)", 
+                           node_name, successful_calls, total_calls)
         
         return node_data
 
@@ -179,14 +202,16 @@ class ProxmoxVEClient:
                     enhanced_node = node.copy()
                     enhanced_node["load_average"] = node_data["load_average"]
                     enhanced_node["cpu_info"] = node_data["cpu_info"]
+                    enhanced_node["available"] = node_data["available"]
                     nodes_with_data.append(enhanced_node)
                     
                 except Exception as e:
                     _LOGGER.error("Failed to fetch data from node %s: %s", node_name, e)
-                    # Still add the node even if data fetch failed
+                    # Still add the node but mark as unavailable
                     enhanced_node = node.copy()
                     enhanced_node["load_average"] = [0.0, 0.0, 0.0]
                     enhanced_node["cpu_info"] = {}
+                    enhanced_node["available"] = False
                     nodes_with_data.append(enhanced_node)
             
             result = {
