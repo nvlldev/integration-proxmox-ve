@@ -349,15 +349,16 @@ async def async_setup_entry(
             # This is needed because the Home Assistant DataUpdateCoordinator is not properly notifying entities
             coordinator_key = f"{entry.entry_id}_coordinator"
             coordinator = hass.data[DOMAIN].get(coordinator_key)
-            if coordinator and hasattr(coordinator, '_listeners') and coordinator._listeners:
-                _LOGGER.debug("Manually notifying %s entities after data update", len(coordinator._listeners))
-                for i, listener in enumerate(coordinator._listeners):
-                    try:
-                        _LOGGER.debug("Manually notifying entity %s", i+1)
-                        listener()
-                        _LOGGER.debug("Successfully manually notified entity %s", i+1)
-                    except Exception as e:
-                        _LOGGER.error("Error manually notifying entity %s: %s", i+1, e)
+            if coordinator:
+                _LOGGER.debug("Manually notifying entities after data update")
+                try:
+                    # Use the proper Home Assistant way to notify entities
+                    # Instead of calling listeners directly, we'll trigger a refresh
+                    # which should properly notify all registered entities
+                    await coordinator.async_request_refresh()
+                    _LOGGER.debug("Successfully triggered coordinator refresh for entity notification")
+                except Exception as e:
+                    _LOGGER.error("Error triggering coordinator refresh for entity notification: %s", e)
             
             return result_data
         except AuthenticationError as error:
@@ -579,20 +580,10 @@ async def async_setup_entry(
                 await coordinator.async_request_refresh()
                 _LOGGER.debug("Second coordinator refresh test completed")
                 
-                # Manually notify entities if they weren't notified automatically
-                if hasattr(coordinator, '_listeners') and coordinator._listeners:
-                    _LOGGER.debug("Manually notifying %s entities", len(coordinator._listeners))
-                    for i, listener in enumerate(coordinator._listeners):
-                        try:
-                            _LOGGER.debug("Manually notifying entity %s", i+1)
-                            listener()
-                            _LOGGER.debug("Successfully manually notified entity %s", i+1)
-                        except Exception as e:
-                            _LOGGER.error("Error manually notifying entity %s: %s", i+1, e)
-                
-                # Store the coordinator for manual updates
-                hass.data[DOMAIN][f"{entry.entry_id}_manual_update_coordinator"] = coordinator
-                _LOGGER.debug("Stored coordinator for manual updates")
+                # Manually notify all entities
+                # Note: Removed manual notification due to listener corruption issues
+                # The coordinator should handle entity notifications automatically
+                _LOGGER.debug("Coordinator refresh completed, entities should be notified automatically")
                 
             except Exception as e:
                 _LOGGER.error("Error testing coordinator refresh: %s", e)
@@ -936,18 +927,10 @@ async def async_trigger_manual_update(hass: HomeAssistant, entry_id: str) -> Non
         _LOGGER.debug("Manual coordinator refresh completed")
         
         # Manually notify all entities
-        if hasattr(coordinator, '_listeners') and coordinator._listeners:
-            _LOGGER.debug("Manually notifying %s entities", len(coordinator._listeners))
-            for i, listener in enumerate(coordinator._listeners):
-                try:
-                    _LOGGER.debug("Manually notifying entity %s", i+1)
-                    listener()
-                    _LOGGER.debug("Successfully manually notified entity %s", i+1)
-                except Exception as e:
-                    _LOGGER.error("Error manually notifying entity %s: %s", i+1, e)
-        else:
-            _LOGGER.warning("No listeners found on coordinator")
-            
+        # Note: Removed manual notification due to listener corruption issues
+        # The coordinator should handle entity notifications automatically
+        _LOGGER.debug("Coordinator refresh completed, entities should be notified automatically")
+        
     except Exception as e:
         _LOGGER.error("Error during manual update: %s", e)
     
