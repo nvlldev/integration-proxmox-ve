@@ -441,6 +441,8 @@ async def async_setup_entry(
                 node_name = node.get("node", "unknown")
                 node_id = node_name
                 host = entry.data["host"]
+                _LOGGER.debug("Creating node entity with ID: %s (type: %s)", node_id, type(node_id))
+                
                 # Device info for node
                 node_device_info = DeviceInfo(
                     identifiers={(DOMAIN, f"node_{host}_{node_name}")},
@@ -472,6 +474,7 @@ async def async_setup_entry(
                     "cpu_model": node_load_data.get("cpu_model", "Unknown"),
                 })
                 for attr, value in node_attrs.items():
+                    _LOGGER.debug("Creating node sensor: type=Node, id=%s, attr=%s, value=%s", node_id, attr, value)
                     entities.append(ProxmoxBaseAttributeSensor(
                         coordinator, entry.entry_id, host, "Node", node_id, node_name, attr, value, node_device_info
                     ))
@@ -482,6 +485,8 @@ async def async_setup_entry(
                 vm_name = vm.get("name", f"VM {vmid}")
                 node_name = vm.get("node", "unknown")
                 host = entry.data["host"]
+                _LOGGER.debug("Creating VM entity with ID: %s (type: %s)", vmid, type(vmid))
+                
                 # Device info for VM
                 vm_device_info = DeviceInfo(
                     identifiers={(DOMAIN, f"vm_{host}_{node_name}_{vmid}")},
@@ -502,6 +507,7 @@ async def async_setup_entry(
                     "memory_usage_percent": (float(vm.get("mem", 0)) / float(vm.get("maxmem", 1)) * 100) if vm.get("maxmem", 0) else 0.0,
                 }
                 for attr, value in vm_attrs.items():
+                    _LOGGER.debug("Creating VM sensor: type=VM, id=%s, attr=%s, value=%s", vmid, attr, value)
                     entities.append(ProxmoxBaseAttributeSensor(
                         coordinator, entry.entry_id, host, "VM", vmid, vm_name, attr, value, vm_device_info
                     ))
@@ -512,6 +518,8 @@ async def async_setup_entry(
                 container_name = container.get("name", f"Container {container_id}")
                 node_name = container.get("node", "unknown")
                 host = entry.data["host"]
+                _LOGGER.debug("Creating container entity with ID: %s (type: %s)", container_id, type(container_id))
+                
                 # Device info for container
                 container_device_info = DeviceInfo(
                     identifiers={(DOMAIN, f"container_{host}_{node_name}_{container_id}")},
@@ -532,6 +540,7 @@ async def async_setup_entry(
                     "memory_usage_percent": (float(container.get("mem", 0)) / float(container.get("maxmem", 1)) * 100) if container.get("maxmem", 0) else 0.0,
                 }
                 for attr, value in container_attrs.items():
+                    _LOGGER.debug("Creating container sensor: type=Container, id=%s, attr=%s, value=%s", container_id, attr, value)
                     entities.append(ProxmoxBaseAttributeSensor(
                         coordinator, entry.entry_id, host, "Container", container_id, container_name, attr, value, container_device_info
                     ))
@@ -693,8 +702,15 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
 
         # Find the relevant data based on device type
         if self._device_type == "Node":
+            _LOGGER.debug("Looking for node with device ID: %s (type: %s)", self._device_id, type(self._device_id))
+            _LOGGER.debug("Available nodes: %s", [(n.get("node"), type(n.get("node"))) for n in self.coordinator.data.get("nodes", [])])
+            
             for node in self.coordinator.data.get("nodes", []):
-                if node.get("node") == self._device_id:
+                node_id = node.get("node")
+                _LOGGER.debug("Comparing node ID: %s (type: %s) with device ID: %s (type: %s)", 
+                             node_id, type(node_id), self._device_id, type(self._device_id))
+                
+                if node_id == self._device_id:
                     _LOGGER.debug("Found matching node: %s", node.get("node"))
                     old_value = self._attr_native_value
                     self._update_node_value(node)
@@ -704,8 +720,15 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.warning("No matching node found for device ID: %s", self._device_id)
                 _LOGGER.debug("Available nodes: %s", [n.get("node") for n in self.coordinator.data.get("nodes", [])])
         elif self._device_type == "VM":
+            _LOGGER.debug("Looking for VM with device ID: %s (type: %s)", self._device_id, type(self._device_id))
+            _LOGGER.debug("Available VMs: %s", [(v.get("vmid"), type(v.get("vmid"))) for v in self.coordinator.data.get("vms", [])])
+            
             for vm in self.coordinator.data.get("vms", []):
-                if vm.get("vmid") == self._device_id:
+                vm_id = vm.get("vmid")
+                _LOGGER.debug("Comparing VM ID: %s (type: %s) with device ID: %s (type: %s)", 
+                             vm_id, type(vm_id), self._device_id, type(self._device_id))
+                
+                if vm_id == self._device_id:
                     _LOGGER.debug("Found matching VM: %s", vm.get("vmid"))
                     old_value = self._attr_native_value
                     self._update_vm_value(vm)
@@ -715,8 +738,14 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.warning("No matching VM found for device ID: %s", self._device_id)
                 _LOGGER.debug("Available VMs: %s", [v.get("vmid") for v in self.coordinator.data.get("vms", [])])
         elif self._device_type == "Container":
+            _LOGGER.debug("Looking for container with device ID: %s (type: %s)", self._device_id, type(self._device_id))
+            _LOGGER.debug("Available containers: %s", [((c.get("id") or c.get("vmid")), type(c.get("id") or c.get("vmid"))) for c in self.coordinator.data.get("containers", [])])
+            
             for container in self.coordinator.data.get("containers", []):
                 container_id = container.get("id") or container.get("vmid")
+                _LOGGER.debug("Comparing container ID: %s (type: %s) with device ID: %s (type: %s)", 
+                             container_id, type(container_id), self._device_id, type(self._device_id))
+                
                 if container_id == self._device_id:
                     _LOGGER.debug("Found matching container: %s", container_id)
                     old_value = self._attr_native_value
@@ -734,45 +763,87 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
 
     def _update_node_value(self, node_data):
         """Update sensor value from node data."""
+        _LOGGER.debug("=== UPDATING NODE VALUE FOR %s ===", self._attr_name)
+        _LOGGER.debug("Raw attr name: %s", self._raw_attr_name)
+        _LOGGER.debug("Node data: %s", node_data)
+        _LOGGER.debug("Current value: %s", self._attr_native_value)
+        
         if self._raw_attr_name == "cpu_usage_percent":
-            self._attr_native_value = float(node_data.get("cpu", 0)) * 100
+            cpu_value = node_data.get("cpu", 0)
+            new_value = float(cpu_value) * 100
+            _LOGGER.debug("CPU value from data: %s, calculated: %s", cpu_value, new_value)
+            self._attr_native_value = new_value
         elif self._raw_attr_name == "memory_used_bytes":
-            self._attr_native_value = node_data.get("mem", 0)
+            mem_value = node_data.get("mem", 0)
+            _LOGGER.debug("Memory value from data: %s", mem_value)
+            self._attr_native_value = mem_value
         elif self._raw_attr_name == "memory_total_bytes":
-            self._attr_native_value = node_data.get("maxmem", 0)
+            maxmem_value = node_data.get("maxmem", 0)
+            _LOGGER.debug("Max memory value from data: %s", maxmem_value)
+            self._attr_native_value = maxmem_value
         elif self._raw_attr_name == "disk_used_bytes":
-            self._attr_native_value = node_data.get("disk", 0)
+            disk_value = node_data.get("disk", 0)
+            _LOGGER.debug("Disk value from data: %s", disk_value)
+            self._attr_native_value = disk_value
         elif self._raw_attr_name == "disk_total_bytes":
-            self._attr_native_value = node_data.get("maxdisk", 0)
+            maxdisk_value = node_data.get("maxdisk", 0)
+            _LOGGER.debug("Max disk value from data: %s", maxdisk_value)
+            self._attr_native_value = maxdisk_value
         elif self._raw_attr_name == "uptime_seconds":
-            self._attr_native_value = node_data.get("uptime", 0)
+            uptime_value = node_data.get("uptime", 0)
+            _LOGGER.debug("Uptime value from data: %s", uptime_value)
+            self._attr_native_value = uptime_value
         elif self._raw_attr_name == "memory_usage_percent":
             mem = float(node_data.get("mem", 0))
             maxmem = float(node_data.get("maxmem", 1))
-            self._attr_native_value = (mem / maxmem * 100) if maxmem > 0 else 0.0
+            new_value = (mem / maxmem * 100) if maxmem > 0 else 0.0
+            _LOGGER.debug("Memory usage calculation: mem=%s, maxmem=%s, result=%s", mem, maxmem, new_value)
+            self._attr_native_value = new_value
         elif self._raw_attr_name.startswith("load_average_"):
             node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
+            _LOGGER.debug("Node load data for device %s: %s", self._device_id, node_load_data)
             if self._raw_attr_name == "load_average_1min":
-                self._attr_native_value = float(node_load_data.get("loadavg_1min", 0))
+                load_value = node_load_data.get("loadavg_1min", 0)
+                _LOGGER.debug("Load average 1min value: %s", load_value)
+                self._attr_native_value = float(load_value)
             elif self._raw_attr_name == "load_average_5min":
-                self._attr_native_value = float(node_load_data.get("loadavg_5min", 0))
+                load_value = node_load_data.get("loadavg_5min", 0)
+                _LOGGER.debug("Load average 5min value: %s", load_value)
+                self._attr_native_value = float(load_value)
             elif self._raw_attr_name == "load_average_15min":
-                self._attr_native_value = float(node_load_data.get("loadavg_15min", 0))
+                load_value = node_load_data.get("loadavg_15min", 0)
+                _LOGGER.debug("Load average 15min value: %s", load_value)
+                self._attr_native_value = float(load_value)
         elif self._raw_attr_name == "cpu_frequency_mhz":
             node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
-            self._attr_native_value = int(node_load_data.get("cpu_frequency", 0))
+            freq_value = node_load_data.get("cpu_frequency", 0)
+            _LOGGER.debug("CPU frequency value: %s", freq_value)
+            self._attr_native_value = int(freq_value)
         elif self._raw_attr_name == "cpu_cores":
             node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
-            self._attr_native_value = int(node_load_data.get("cpu_cores", 0))
+            cores_value = node_load_data.get("cpu_cores", 0)
+            _LOGGER.debug("CPU cores value: %s", cores_value)
+            self._attr_native_value = int(cores_value)
         elif self._raw_attr_name == "cpu_sockets":
             node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
-            self._attr_native_value = int(node_load_data.get("cpu_sockets", 0))
+            sockets_value = node_load_data.get("cpu_sockets", 0)
+            _LOGGER.debug("CPU sockets value: %s", sockets_value)
+            self._attr_native_value = int(sockets_value)
         elif self._raw_attr_name == "cpu_total_logical":
             node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
-            self._attr_native_value = int(node_load_data.get("cpu_total", 0))
+            total_value = node_load_data.get("cpu_total", 0)
+            _LOGGER.debug("CPU total value: %s", total_value)
+            self._attr_native_value = int(total_value)
         elif self._raw_attr_name == "cpu_model":
             node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
-            self._attr_native_value = node_load_data.get("cpu_model", "Unknown")
+            model_value = node_load_data.get("cpu_model", "Unknown")
+            _LOGGER.debug("CPU model value: %s", model_value)
+            self._attr_native_value = model_value
+        else:
+            _LOGGER.warning("Unknown attribute name: %s", self._raw_attr_name)
+        
+        _LOGGER.debug("Final updated value: %s", self._attr_native_value)
+        _LOGGER.debug("=== NODE VALUE UPDATE COMPLETED ===")
 
     def _update_vm_value(self, vm_data):
         """Update sensor value from VM data."""
