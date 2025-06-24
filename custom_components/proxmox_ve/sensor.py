@@ -576,36 +576,36 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         # Just return the cached value
         return self._attr_native_value
 
-    def handle_coordinator_update(self) -> None:
+    async def async_handle_coordinator_update(self) -> None:
         if not self.coordinator.data:
             _LOGGER.debug("No coordinator data available for sensor %s", self._attr_name)
             return
 
-        _LOGGER.debug("Updating sensor %s with new coordinator data", self._attr_name)
+        _LOGGER.debug("[ASYNC] Updating sensor %s with new coordinator data", self._attr_name)
 
         # Find the relevant data based on device type
         if self._device_type == "Node":
             for node in self.coordinator.data.get("nodes", []):
                 if node.get("node") == self._device_id:
                     self._update_node_value(node)
-                    _LOGGER.debug("Updated node sensor %s with value: %s", self._attr_name, self._attr_native_value)
+                    _LOGGER.debug("[ASYNC] Updated node sensor %s with value: %s", self._attr_name, self._attr_native_value)
                     break
         elif self._device_type == "VM":
             for vm in self.coordinator.data.get("vms", []):
                 if vm.get("vmid") == self._device_id:
                     self._update_vm_value(vm)
-                    _LOGGER.debug("Updated VM sensor %s with value: %s", self._attr_name, self._attr_native_value)
+                    _LOGGER.debug("[ASYNC] Updated VM sensor %s with value: %s", self._attr_name, self._attr_native_value)
                     break
         elif self._device_type == "Container":
             for container in self.coordinator.data.get("containers", []):
                 container_id = container.get("id") or container.get("vmid")
                 if container_id == self._device_id:
                     self._update_container_value(container)
-                    _LOGGER.debug("Updated container sensor %s with value: %s", self._attr_name, self._attr_native_value)
+                    _LOGGER.debug("[ASYNC] Updated container sensor %s with value: %s", self._attr_name, self._attr_native_value)
                     break
 
         # Notify Home Assistant of the new state
-        super().handle_coordinator_update()
+        await super().async_handle_coordinator_update()
 
     def _update_node_value(self, node_data):
         """Update sensor value from node data."""
