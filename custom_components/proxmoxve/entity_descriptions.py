@@ -251,6 +251,53 @@ STORAGE_SENSORS: tuple[ProxmoxSensorEntityDescription, ...] = (
     ),
 )
 
+# Node binary sensor descriptions
+NODE_BINARY_SENSORS: tuple[ProxmoxBinarySensorEntityDescription, ...] = (
+    ProxmoxBinarySensorEntityDescription(
+        key="node_available",
+        name="Node Available",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        icon="mdi:server-network",
+        value_fn=lambda node: node.available,
+    ),
+)
+
+# VM binary sensor descriptions
+VM_BINARY_SENSORS: tuple[ProxmoxBinarySensorEntityDescription, ...] = (
+    ProxmoxBinarySensorEntityDescription(
+        key="vm_running",
+        name="VM Running",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        icon="mdi:desktop-tower",
+        value_fn=lambda vm: vm.status == "running",
+    ),
+    ProxmoxBinarySensorEntityDescription(
+        key="vm_available",
+        name="VM Available",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        icon="mdi:desktop-tower-monitor",
+        value_fn=lambda vm: vm.status is not None and vm.status != "unknown",
+    ),
+)
+
+# Container binary sensor descriptions
+CONTAINER_BINARY_SENSORS: tuple[ProxmoxBinarySensorEntityDescription, ...] = (
+    ProxmoxBinarySensorEntityDescription(
+        key="container_running",
+        name="Container Running",
+        device_class=BinarySensorDeviceClass.RUNNING,
+        icon="mdi:package-variant",
+        value_fn=lambda container: container.status == "running",
+    ),
+    ProxmoxBinarySensorEntityDescription(
+        key="container_available",
+        name="Container Available",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        icon="mdi:package-variant-closed",
+        value_fn=lambda container: container.status is not None and container.status != "unknown",
+    ),
+)
+
 # Storage binary sensor descriptions
 STORAGE_BINARY_SENSORS: tuple[ProxmoxBinarySensorEntityDescription, ...] = (
     ProxmoxBinarySensorEntityDescription(
