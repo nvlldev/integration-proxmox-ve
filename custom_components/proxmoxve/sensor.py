@@ -17,9 +17,10 @@ from .entity_descriptions import (
     NODE_SENSORS,
     NODE_SPECIFIC_SENSORS,
     ProxmoxSensorEntityDescription,
+    STORAGE_SENSORS,
     VM_SENSORS,
 )
-from .models import ProxmoxContainer, ProxmoxData, ProxmoxNode, ProxmoxResource, ProxmoxVM
+from .models import ProxmoxContainer, ProxmoxData, ProxmoxNode, ProxmoxResource, ProxmoxStorage, ProxmoxVM
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -77,6 +78,17 @@ async def async_setup_entry(
                     ProxmoxContainerSensor(
                         coordinator=coordinator,
                         resource_id=str(container.vmid),
+                        description=description,
+                    )
+                )
+        
+        # Add storage sensors
+        for storage in data.storages:
+            for description in STORAGE_SENSORS:
+                entities.append(
+                    ProxmoxStorageSensor(
+                        coordinator=coordinator,
+                        resource_id=storage.storage_id,
                         description=description,
                     )
                 )
@@ -186,3 +198,21 @@ class ProxmoxContainerSensor(ProxmoxSensor):
         """Get the container resource."""
         resource = super()._get_resource()
         return resource if isinstance(resource, ProxmoxContainer) else None
+
+
+class ProxmoxStorageSensor(ProxmoxSensor):
+    """Sensor for Proxmox VE storage pools."""
+
+    def __init__(
+        self,
+        coordinator: ProxmoxVEDataUpdateCoordinator,
+        resource_id: str,
+        description: ProxmoxSensorEntityDescription,
+    ) -> None:
+        """Initialize the storage sensor."""
+        super().__init__(coordinator, resource_id, "storage", description)
+
+    def _get_resource(self) -> ProxmoxStorage | None:
+        """Get the storage resource."""
+        resource = super()._get_resource()
+        return resource if isinstance(resource, ProxmoxStorage) else None

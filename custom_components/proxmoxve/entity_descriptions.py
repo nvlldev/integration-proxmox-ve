@@ -177,3 +177,76 @@ VM_SENSORS: tuple[ProxmoxSensorEntityDescription, ...] = NODE_SENSORS + (
 
 # Container sensor descriptions (same as VM sensors)
 CONTAINER_SENSORS: tuple[ProxmoxSensorEntityDescription, ...] = VM_SENSORS
+
+# Storage sensor descriptions
+STORAGE_SENSORS: tuple[ProxmoxSensorEntityDescription, ...] = (
+    ProxmoxSensorEntityDescription(
+        key="storage_used_bytes",
+        name="Storage Used",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        icon="mdi:database",
+        value_fn=lambda storage: storage.used_bytes,
+    ),
+    ProxmoxSensorEntityDescription(
+        key="storage_total_bytes",
+        name="Storage Total",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        icon="mdi:database",
+        value_fn=lambda storage: storage.total_bytes,
+    ),
+    ProxmoxSensorEntityDescription(
+        key="storage_available_bytes",
+        name="Storage Available",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        icon="mdi:database",
+        value_fn=lambda storage: storage.available_bytes,
+    ),
+    ProxmoxSensorEntityDescription(
+        key="storage_usage_percent",
+        name="Storage Usage",
+        device_class=SensorDeviceClass.POWER_FACTOR,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        icon="mdi:database",
+        value_fn=lambda storage: storage.usage_percent,
+    ),
+    ProxmoxSensorEntityDescription(
+        key="storage_free_percent",
+        name="Storage Free",
+        device_class=SensorDeviceClass.POWER_FACTOR,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        icon="mdi:database",
+        value_fn=lambda storage: storage.free_percent,
+    ),
+    ProxmoxSensorEntityDescription(
+        key="storage_type",
+        name="Storage Type",
+        icon="mdi:database-settings",
+        value_fn=lambda storage: storage.type,
+    ),
+    ProxmoxSensorEntityDescription(
+        key="storage_content",
+        name="Storage Content Types",
+        icon="mdi:database-settings",
+        value_fn=lambda storage: storage.content,
+    ),
+    ProxmoxSensorEntityDescription(
+        key="storage_enabled",
+        name="Storage Enabled",
+        icon="mdi:database-check",
+        value_fn=lambda storage: storage.enabled,
+    ),
+    ProxmoxSensorEntityDescription(
+        key="storage_shared",
+        name="Storage Shared",
+        icon="mdi:database-sync",
+        value_fn=lambda storage: storage.shared,
+    ),
+)

@@ -68,10 +68,11 @@ class ProxmoxVEDataUpdateCoordinator(DataUpdateCoordinator[ProxmoxData]):
             data = ProxmoxData.from_api_data(raw_data)
             
             _LOGGER.debug(
-                "Successfully fetched data: %d nodes, %d VMs, %d containers",
+                "Successfully fetched data: %d nodes, %d VMs, %d containers, %d storages",
                 len(data.nodes),
                 len(data.vms),
                 len(data.containers),
+                len(data.storages),
             )
             
             return data

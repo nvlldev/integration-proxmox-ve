@@ -184,6 +184,14 @@ class ProxmoxVEAPIClient:
         """Get Proxmox VE version."""
         return await self.async_request("GET", "/version")
 
+    async def async_get_storages(self) -> list[dict[str, Any]]:
+        """Get list of storage pools."""
+        return await self.async_request("GET", "/storage")
+
+    async def async_get_node_storage_status(self, node: str, storage: str) -> dict[str, Any]:
+        """Get storage status for a specific node and storage."""
+        return await self.async_request("GET", f"/nodes/{node}/storage/{storage}/status")
+
     async def async_get_all_data(self) -> dict[str, Any]:
         """Get all data from Proxmox VE API concurrently."""
         _LOGGER.debug("Fetching all data from Proxmox VE API")
@@ -199,6 +207,7 @@ class ProxmoxVEAPIClient:
                     "vms": [],
                     "containers": [],
                     "cluster_status": [],
+                    "storages": [],
                 }
 
             # Prepare tasks for concurrent execution
@@ -206,6 +215,9 @@ class ProxmoxVEAPIClient:
             
             # Add cluster status task
             tasks.append(self.async_get_cluster_status())
+            
+            # Add storage list task
+            tasks.append(self.async_get_storages())
             
             # Add node-specific tasks
             for node_data in nodes_data:
@@ -221,13 +233,15 @@ class ProxmoxVEAPIClient:
             
             # Process results
             cluster_status = results[0] if not isinstance(results[0], Exception) else []
+            storages_list = results[1] if not isinstance(results[1], Exception) else []
             
             # Merge node data with status
             enhanced_nodes = []
             all_vms = []
             all_containers = []
+            all_storages = []
             
-            result_index = 1  # Skip cluster status result
+            result_index = 2  # Skip cluster status and storage list results
             for node_data in nodes_data:
                 node_name = node_data["node"]
                 
@@ -266,18 +280,60 @@ class ProxmoxVEAPIClient:
                 else:
                     _LOGGER.warning("Failed to get containers for node %s: %s", node_name, containers_result)
 
+            # Process storage data if we have it
+            if storages_list:
+                # Get detailed storage status for each storage on each node
+                storage_tasks = []
+                for node_data in enhanced_nodes:
+                    node_name = node_data["node"]
+                    for storage_data in storages_list:
+                        storage_name = storage_data.get("storage", "")
+                        if storage_name:
+                            storage_tasks.append(
+                                self.async_get_node_storage_status(node_name, storage_name)
+                            )
+                
+                if storage_tasks:
+                    storage_results = await asyncio.gather(*storage_tasks, return_exceptions=True)
+                    
+                    # Process storage results
+                    storage_index = 0
+                    for storage_data in storages_list:
+                        storage_name = storage_data.get("storage", "")
+                        if not storage_name:
+                            continue
+                            
+                        for node_data in enhanced_nodes:
+                            node_name = node_data["node"]
+                            
+                            if storage_index < len(storage_results):
+                                status_result = storage_results[storage_index]
+                                storage_index += 1
+                                
+                                if not isinstance(status_result, Exception) and status_result:
+                                    # Create enhanced storage entry
+                                    enhanced_storage = storage_data.copy()
+                                    enhanced_storage.update(status_result)
+                                    enhanced_storage["node"] = node_name
+                                    enhanced_storage["storage_id"] = f"{node_name}_{storage_name}"
+                                    all_storages.append(enhanced_storage)
+                                else:
+                                    _LOGGER.debug("No storage status for %s on %s", storage_name, node_name)
+
             result = {
                 "nodes": enhanced_nodes,
                 "vms": all_vms,
                 "containers": all_containers,
                 "cluster_status": cluster_status,
+                "storages": all_storages,
             }
             
             _LOGGER.info(
-                "Successfully fetched data: %d nodes, %d VMs, %d containers",
+                "Successfully fetched data: %d nodes, %d VMs, %d containers, %d storages",
                 len(enhanced_nodes),
                 len(all_vms),
                 len(all_containers),
+                len(all_storages),
             )
             
             return result

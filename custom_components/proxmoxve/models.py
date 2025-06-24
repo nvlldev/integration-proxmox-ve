@@ -154,12 +154,61 @@ class ProxmoxContainer(ProxmoxResource):
 
 
 @dataclass
+class ProxmoxStorage:
+    """Represents a Proxmox VE storage pool."""
+
+    storage_id: str
+    storage: str
+    node: str
+    type: str = "unknown"
+    content: str = ""
+    shared: bool = False
+    enabled: bool = True
+    used_bytes: int = 0
+    total_bytes: int = 0
+    available_bytes: int = 0
+
+    @property
+    def usage_percent(self) -> float:
+        """Calculate storage usage percentage."""
+        return (self.used_bytes / self.total_bytes * 100) if self.total_bytes > 0 else 0.0
+
+    @property
+    def free_percent(self) -> float:
+        """Calculate storage free percentage."""
+        if self.total_bytes <= 0:
+            return 0.0
+        return (self.available_bytes / self.total_bytes * 100)
+
+    @classmethod
+    def from_api_data(cls, data: dict[str, Any]) -> ProxmoxStorage:
+        """Create ProxmoxStorage from API data."""
+        storage_name = data.get("storage", "unknown")
+        node_name = data.get("node", "unknown")
+        storage_id = data.get("storage_id", f"{node_name}_{storage_name}")
+        
+        return cls(
+            storage_id=storage_id,
+            storage=storage_name,
+            node=node_name,
+            type=data.get("type", "unknown"),
+            content=data.get("content", ""),
+            shared=bool(data.get("shared", False)),
+            enabled=bool(data.get("enabled", True)),
+            used_bytes=data.get("used", 0),
+            total_bytes=data.get("total", 0),
+            available_bytes=data.get("avail", 0),
+        )
+
+
+@dataclass
 class ProxmoxData:
     """Container for all Proxmox VE data."""
 
     nodes: list[ProxmoxNode]
     vms: list[ProxmoxVM]
     containers: list[ProxmoxContainer]
+    storages: list[ProxmoxStorage]
     cluster_status: list[dict[str, Any]]
 
     @classmethod
@@ -168,12 +217,14 @@ class ProxmoxData:
         nodes = [ProxmoxNode.from_api_data(node) for node in data.get("nodes", [])]
         vms = [ProxmoxVM.from_api_data(vm) for vm in data.get("vms", [])]
         containers = [ProxmoxContainer.from_api_data(container) for container in data.get("containers", [])]
+        storages = [ProxmoxStorage.from_api_data(storage) for storage in data.get("storages", [])]
         cluster_status = data.get("cluster_status", [])
 
         return cls(
             nodes=nodes,
             vms=vms,
             containers=containers,
+            storages=storages,
             cluster_status=cluster_status,
         )
 
@@ -188,3 +239,7 @@ class ProxmoxData:
     def get_container_by_id(self, vmid: int) -> ProxmoxContainer | None:
         """Get container by ID."""
         return next((container for container in self.containers if container.vmid == vmid), None)
+
+    def get_storage_by_id(self, storage_id: str) -> ProxmoxStorage | None:
+        """Get storage by ID."""
+        return next((storage for storage in self.storages if storage.storage_id == storage_id), None)

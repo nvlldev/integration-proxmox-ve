@@ -6,7 +6,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import ProxmoxVEDataUpdateCoordinator
-from .models import ProxmoxData, ProxmoxResource
+from .models import ProxmoxData, ProxmoxResource, ProxmoxStorage
 
 
 class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
@@ -34,6 +34,7 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
             "node": "Node",
             "vm": "VM", 
             "container": "Container",
+            "storage": "Storage",
         }
         
         display_name = resource_type_names.get(self._resource_type, self._resource_type.title())
@@ -58,8 +59,8 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
             configuration_url=f"https://{host}:{port}/",
         )
 
-        # Add parent device for VMs and containers
-        if self._resource_type in ("vm", "container"):
+        # Add parent device for VMs, containers, and storage
+        if self._resource_type in ("vm", "container", "storage"):
             device_info["via_device"] = (DOMAIN, f"node_{resource.node}")
 
         return device_info
@@ -80,7 +81,7 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
 
         return True
 
-    def _get_resource(self) -> ProxmoxResource | None:
+    def _get_resource(self) -> ProxmoxResource | ProxmoxStorage | None:
         """Get the resource data from coordinator."""
         if not self.coordinator.data:
             return None
@@ -93,5 +94,7 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
             return data.get_vm_by_id(int(self._resource_id))
         elif self._resource_type == "container":
             return data.get_container_by_id(int(self._resource_id))
+        elif self._resource_type == "storage":
+            return data.get_storage_by_id(self._resource_id)
 
         return None
