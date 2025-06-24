@@ -274,7 +274,7 @@ VM_BINARY_SENSORS: tuple[ProxmoxBinarySensorEntityDescription, ...] = (
     ProxmoxBinarySensorEntityDescription(
         key="vm_available",
         name="VM Available",
-        device_class=BinarySensorDeviceClass.PROBLEM,
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
         icon="mdi:desktop-tower-monitor",
         value_fn=lambda vm: vm.status is not None and vm.status != "unknown",
     ),
@@ -292,7 +292,7 @@ CONTAINER_BINARY_SENSORS: tuple[ProxmoxBinarySensorEntityDescription, ...] = (
     ProxmoxBinarySensorEntityDescription(
         key="container_available",
         name="Container Available",
-        device_class=BinarySensorDeviceClass.PROBLEM,
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
         icon="mdi:package-variant-closed",
         value_fn=lambda container: container.status is not None and container.status != "unknown",
     ),
