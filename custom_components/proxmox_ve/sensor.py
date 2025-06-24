@@ -82,6 +82,7 @@ async def async_setup_entry(
 
     async def async_update_data():
         """Fetch data from API endpoint."""
+        _LOGGER.debug("=== COORDINATOR UPDATE DATA FUNCTION CALLED ===")
         try:
             _LOGGER.debug("Fetching Proxmox VE data...")
             _LOGGER.debug("Using client with host: %s, username: %s", client.host, client.username)
@@ -340,6 +341,10 @@ async def async_setup_entry(
             result_data = {"nodes": nodes, "vms": all_vms, "containers": all_containers, "node_load_data": node_load_data}
             _LOGGER.debug("Coordinator update completed successfully with %s nodes, %s VMs, %s containers", 
                          len(nodes), len(all_vms), len(all_containers))
+            _LOGGER.debug("=== RETURNING DATA TO COORDINATOR ===")
+            _LOGGER.debug("Sample node data: %s", nodes[0] if nodes else "No nodes")
+            _LOGGER.debug("Sample VM data: %s", all_vms[0] if all_vms else "No VMs")
+            _LOGGER.debug("=== COORDINATOR UPDATE DATA FUNCTION COMPLETED ===")
             return result_data
         except AuthenticationError as error:
             _LOGGER.error("Authentication error fetching Proxmox VE data: %s", error)
@@ -520,6 +525,8 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
     """A generic sensor for a Proxmox VE device attribute."""
     def __init__(self, coordinator, entry_id, host, device_type, device_id, device_name, attr_name, attr_value, device_info):
         super().__init__(coordinator)
+        _LOGGER.debug("Creating sensor entity: %s (type: %s, id: %s, attr: %s)", device_name, device_type, device_id, attr_name)
+        
         # Prettify device_type and attr_name
         pretty_device_type = _ABBREVIATION_MAP.get(device_type.lower(), device_type)
         pretty_attr_name = _prettify_attr_name(attr_name)
@@ -533,6 +540,8 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         self._device_type = device_type
         self._device_id = device_id
         self._device_name = device_name
+
+        _LOGGER.debug("Sensor entity created: %s with initial value: %s", self._attr_name, self._attr_native_value)
 
         # Set state_class, device_class, unit_of_measurement, and icon
         self._attr_state_class = None
@@ -572,40 +581,59 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
             self._attr_icon = "mdi:chip"
 
     @property
+    def should_poll(self) -> bool:
+        """No polling needed."""
+        return False
+
+    @property
     def native_value(self):
         # Just return the cached value
         return self._attr_native_value
 
     async def async_handle_coordinator_update(self) -> None:
+        _LOGGER.debug("=== COORDINATOR UPDATE TRIGGERED FOR %s ===", self._attr_name)
+        _LOGGER.debug("Coordinator data available: %s", self.coordinator.data is not None)
+        _LOGGER.debug("Coordinator data keys: %s", list(self.coordinator.data.keys()) if self.coordinator.data else "None")
+        
         if not self.coordinator.data:
             _LOGGER.debug("No coordinator data available for sensor %s", self._attr_name)
             return
 
         _LOGGER.debug("[ASYNC] Updating sensor %s with new coordinator data", self._attr_name)
+        _LOGGER.debug("Device type: %s, Device ID: %s", self._device_type, self._device_id)
+        _LOGGER.debug("Raw attr name: %s", self._raw_attr_name)
 
         # Find the relevant data based on device type
         if self._device_type == "Node":
             for node in self.coordinator.data.get("nodes", []):
                 if node.get("node") == self._device_id:
+                    _LOGGER.debug("Found matching node: %s", node.get("node"))
+                    old_value = self._attr_native_value
                     self._update_node_value(node)
-                    _LOGGER.debug("[ASYNC] Updated node sensor %s with value: %s", self._attr_name, self._attr_native_value)
+                    _LOGGER.debug("[ASYNC] Updated node sensor %s: %s -> %s", self._attr_name, old_value, self._attr_native_value)
                     break
         elif self._device_type == "VM":
             for vm in self.coordinator.data.get("vms", []):
                 if vm.get("vmid") == self._device_id:
+                    _LOGGER.debug("Found matching VM: %s", vm.get("vmid"))
+                    old_value = self._attr_native_value
                     self._update_vm_value(vm)
-                    _LOGGER.debug("[ASYNC] Updated VM sensor %s with value: %s", self._attr_name, self._attr_native_value)
+                    _LOGGER.debug("[ASYNC] Updated VM sensor %s: %s -> %s", self._attr_name, old_value, self._attr_native_value)
                     break
         elif self._device_type == "Container":
             for container in self.coordinator.data.get("containers", []):
                 container_id = container.get("id") or container.get("vmid")
                 if container_id == self._device_id:
+                    _LOGGER.debug("Found matching container: %s", container_id)
+                    old_value = self._attr_native_value
                     self._update_container_value(container)
-                    _LOGGER.debug("[ASYNC] Updated container sensor %s with value: %s", self._attr_name, self._attr_native_value)
+                    _LOGGER.debug("[ASYNC] Updated container sensor %s: %s -> %s", self._attr_name, old_value, self._attr_native_value)
                     break
 
         # Notify Home Assistant of the new state
+        _LOGGER.debug("Calling super().async_handle_coordinator_update() for %s", self._attr_name)
         await super().async_handle_coordinator_update()
+        _LOGGER.debug("=== COORDINATOR UPDATE COMPLETED FOR %s ===", self._attr_name)
 
     def _update_node_value(self, node_data):
         """Update sensor value from node data."""
@@ -690,3 +718,8 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
             mem = float(container_data.get("mem", 0))
             maxmem = float(container_data.get("maxmem", 1))
             self._attr_native_value = (mem / maxmem * 100) if maxmem > 0 else 0.0
+
+    async def async_refresh(self) -> None:
+        """Manually trigger a refresh for testing."""
+        _LOGGER.debug("Manual refresh triggered for %s", self._attr_name)
+        await self.async_handle_coordinator_update()
