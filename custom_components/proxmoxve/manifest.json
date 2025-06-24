@@ -1,5 +1,5 @@
 {
-  "domain": "proxmox_ve",
+  "domain": "proxmoxve",
   "name": "Proxmox VE",
   "codeowners": [],
   "config_flow": true,

@@ -1,7 +1,7 @@
 """Constants for the Proxmox VE integration."""
 from datetime import timedelta
 
-DOMAIN = "proxmox_ve"
+DOMAIN = "proxmoxve"
 NAME = "Proxmox VE"
 VERSION = "1.0.0"
 
