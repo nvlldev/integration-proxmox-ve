@@ -40,8 +40,8 @@ class ProxmoxVEDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             _LOGGER,
             name=DOMAIN,
             update_interval=update_interval,
-            # Enable always_update=False for better performance if data doesn't change
-            always_update=False,
+            # Enable always_update=True to ensure entities update on schedule
+            always_update=True,
         )
 
     async def _async_update_data(self) -> dict[str, Any]:

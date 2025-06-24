@@ -11,13 +11,13 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfInformation, UnitOfTime, UnitOfFrequency
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DATA_COORDINATOR, DOMAIN
 from .coordinator import ProxmoxVEDataUpdateCoordinator
-from .entity import ProxmoxVEEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -213,7 +213,7 @@ async def async_setup_entry(
         _LOGGER.warning("No Proxmox VE entities found to create")
 
 
-class ProxmoxVEBackwardCompatibleSensor(SensorEntity):
+class ProxmoxVEBackwardCompatibleSensor(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator], SensorEntity):
     """Backward compatible Proxmox VE sensor - exact same as old integration."""
     
     def __init__(
@@ -228,7 +228,7 @@ class ProxmoxVEBackwardCompatibleSensor(SensorEntity):
         device_info: DeviceInfo,
     ) -> None:
         """Initialize the sensor."""
-        self.coordinator = coordinator
+        super().__init__(coordinator)
         self._entry_id = entry_id
         self._host = host
         self._device_type = device_type
@@ -247,9 +247,6 @@ class ProxmoxVEBackwardCompatibleSensor(SensorEntity):
         
         # Set attributes based on sensor type
         self._set_sensor_attributes()
-        
-        # Register with coordinator
-        coordinator.async_add_listener(self._handle_coordinator_update)
         
         _LOGGER.debug("Created backward compatible sensor: %s", self._attr_name)
     
@@ -296,11 +293,6 @@ class ProxmoxVEBackwardCompatibleSensor(SensorEntity):
             self._attr_icon = "mdi:server"
         elif self._raw_attr_name == "cpu_model":
             self._attr_icon = "mdi:chip"
-
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        return self.coordinator.last_update_success
 
     @property
     def should_poll(self) -> bool:
@@ -425,7 +417,3 @@ class ProxmoxVEBackwardCompatibleSensor(SensorEntity):
             return (mem / maxmem * 100) if maxmem > 0 else 0.0
         return None
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self.async_write_ha_state()
