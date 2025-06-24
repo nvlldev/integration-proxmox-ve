@@ -394,24 +394,9 @@ async def async_setup_entry(
                         else:
                             _LOGGER.warning("No test entity found for manual update test")
                     
-                    # FIX: Manually notify all entities since the coordinator is not doing it automatically
-                    if hasattr(coordinator, '_listeners') and coordinator._listeners:
-                        _LOGGER.debug("Manually notifying %s entities after coordinator refresh", len(coordinator._listeners))
-                        for i, listener in enumerate(coordinator._listeners):
-                            try:
-                                if hasattr(listener, '__self__') and hasattr(listener.__self__, '_attr_name'):
-                                    entity_name = listener.__self__._attr_name
-                                    _LOGGER.debug("Manually notifying entity %s: %s", i+1, entity_name)
-                                    await listener()
-                                    _LOGGER.debug("Successfully manually notified entity %s: %s", i+1, entity_name)
-                                else:
-                                    _LOGGER.debug("Manually notifying entity %s (unknown)", i+1)
-                                    await listener()
-                                    _LOGGER.debug("Successfully manually notified entity %s", i+1)
-                            except Exception as e:
-                                _LOGGER.error("Error manually notifying entity %s: %s", i+1, e)
-                    else:
-                        _LOGGER.warning("No listeners found on coordinator for manual notification")
+                    # Note: Removed manual notification due to listener corruption issues
+                    # The coordinator should handle entity notifications automatically
+                    _LOGGER.debug("Coordinator refresh completed, entities should be notified automatically")
                     
                 except Exception as e:
                     _LOGGER.error("Error triggering coordinator refresh for entity notification: %s", e)
@@ -439,12 +424,26 @@ async def async_setup_entry(
         # If coordinator exists, use it (this happens during initial setup)
         _LOGGER.debug("Using existing coordinator with interval: %s seconds", existing_coordinator.update_interval.total_seconds())
         coordinator = existing_coordinator
+        # Convert existing coordinator to our custom type if needed
+        if not isinstance(coordinator, ProxmoxDataUpdateCoordinator):
+            _LOGGER.debug("Converting existing coordinator to ProxmoxDataUpdateCoordinator")
+            # Create new coordinator with same settings
+            update_interval_seconds = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
+            coordinator = ProxmoxDataUpdateCoordinator(
+                hass,
+                _LOGGER,
+                name="proxmox",
+                update_method=async_update_data,
+                update_interval=timedelta(seconds=update_interval_seconds),
+            )
+            # Store the new coordinator
+            hass.data[DOMAIN][coordinator_key] = coordinator
     else:
         # Create new coordinator
         update_interval_seconds = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
         _LOGGER.debug("Creating new coordinator with update interval: %s seconds", update_interval_seconds)
         
-        coordinator = DataUpdateCoordinator(
+        coordinator = ProxmoxDataUpdateCoordinator(
             hass,
             _LOGGER,
             name="proxmox",
@@ -1007,3 +1006,29 @@ async def async_trigger_manual_update(hass: HomeAssistant, entry_id: str) -> Non
         _LOGGER.error("Error during manual update: %s", e)
     
     _LOGGER.debug("=== MANUAL UPDATE COMPLETED ===")
+
+class ProxmoxDataUpdateCoordinator(DataUpdateCoordinator):
+    """Custom coordinator that properly notifies entities."""
+    
+    async def async_request_refresh(self) -> None:
+        """Request a refresh of the data and notify all entities."""
+        _LOGGER.debug("ProxmoxDataUpdateCoordinator: Requesting refresh")
+        
+        # Call the parent method to update data
+        await super().async_request_refresh()
+        
+        # Manually notify all entities after data update
+        if hasattr(self, '_listeners') and self._listeners:
+            _LOGGER.debug("ProxmoxDataUpdateCoordinator: Notifying %s entities", len(self._listeners))
+            for listener in self._listeners:
+                try:
+                    # Check if this is a bound method (entity update method)
+                    if hasattr(listener, '__self__') and hasattr(listener.__self__, 'async_handle_coordinator_update'):
+                        await listener.__self__.async_handle_coordinator_update()
+                        _LOGGER.debug("ProxmoxDataUpdateCoordinator: Successfully notified entity")
+                    else:
+                        _LOGGER.debug("ProxmoxDataUpdateCoordinator: Skipping non-entity listener")
+                except Exception as e:
+                    _LOGGER.error("ProxmoxDataUpdateCoordinator: Error notifying entity: %s", e)
+        else:
+            _LOGGER.debug("ProxmoxDataUpdateCoordinator: No listeners to notify")
