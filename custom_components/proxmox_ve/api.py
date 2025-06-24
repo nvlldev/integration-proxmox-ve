@@ -1,7 +1,9 @@
 """Proxmox VE API client."""
 from __future__ import annotations
 
+import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from proxmoxer import ProxmoxAPI
@@ -71,55 +73,101 @@ class ProxmoxVEClient:
                 raise
         return self._api
 
-    def async_get_data(self) -> dict[str, Any]:
-        """Get data from Proxmox VE API."""
+    def _fetch_node_data(self, node_name: str) -> dict[str, Any]:
+        """Fetch data for a specific node concurrently."""
+        node_data = {
+            "name": node_name,
+            "vms": [],
+            "containers": [],
+        }
+        
         try:
-            _LOGGER.debug("Fetching data from Proxmox VE at %s:%s", self.host, self.port)
+            # Get VMs (QEMU) for this node
+            vms = self.api.nodes(node_name).qemu.get()
+            for vm in vms:
+                vm["node"] = node_name
+                vm["type"] = "qemu"
+            node_data["vms"] = vms
+            _LOGGER.debug("Fetched %d VMs from node %s", len(vms), node_name)
+        except Exception as e:
+            _LOGGER.warning("Failed to get VMs from node %s: %s", node_name, e)
+        
+        try:
+            # Get containers (LXC) for this node
+            containers = self.api.nodes(node_name).lxc.get()
+            for container in containers:
+                container["node"] = node_name
+                container["type"] = "lxc"
+            node_data["containers"] = containers
+            _LOGGER.debug("Fetched %d containers from node %s", len(containers), node_name)
+        except Exception as e:
+            _LOGGER.warning("Failed to get containers from node %s: %s", node_name, e)
+        
+        return node_data
+
+    def async_get_data(self) -> dict[str, Any]:
+        """Get data from Proxmox VE API with optimized performance."""
+        start_time = asyncio.get_event_loop().time() if hasattr(asyncio, 'get_event_loop') else 0
+        
+        try:
+            _LOGGER.debug("Starting optimized data fetch from Proxmox VE at %s:%s", self.host, self.port)
             
-            # Test authentication first by getting cluster status
+            # Get basic cluster info and nodes first (sequential, required for further calls)
+            try:
+                nodes = self.api.nodes.get()
+                _LOGGER.debug("Fetched %d nodes", len(nodes))
+            except Exception as e:
+                _LOGGER.error("Failed to get nodes list: %s", e)
+                # Try version check as fallback to verify connection
+                version = self.api.version.get()
+                _LOGGER.debug("Connection verified via version check: %s", version)
+                nodes = []
+            
+            if not nodes:
+                _LOGGER.warning("No nodes found or accessible")
+                return {
+                    "cluster_status": [],
+                    "nodes": [],
+                    "vms": [],
+                    "containers": [],
+                }
+            
+            # Get cluster status in parallel (optional, don't fail if it doesn't work)
+            cluster_status = []
             try:
                 cluster_status = self.api.cluster.status.get()
-                _LOGGER.debug("Successfully authenticated and got cluster status")
+                _LOGGER.debug("Fetched cluster status")
             except Exception as e:
-                _LOGGER.error("Failed to get cluster status (authentication test): %s", e)
-                # Try to get version info as fallback authentication test
-                version = self.api.version.get()
-                _LOGGER.debug("Authentication successful via version check: %s", version)
-                cluster_status = []
+                _LOGGER.debug("Cluster status not available (single node setup?): %s", e)
             
-            # Get all nodes
-            nodes = self.api.nodes.get()
-            _LOGGER.debug("Found %d nodes", len(nodes))
-            
-            # Get VMs and containers from all nodes
+            # Fetch data from all nodes concurrently using ThreadPoolExecutor
             all_vms = []
             all_containers = []
             
-            for node in nodes:
-                node_name = node["node"]
-                _LOGGER.debug("Processing node: %s", node_name)
-                
-                try:
-                    # Get VMs (QEMU)
-                    vms = self.api.nodes(node_name).qemu.get()
-                    for vm in vms:
-                        vm["node"] = node_name
-                        vm["type"] = "qemu"
-                    all_vms.extend(vms)
-                    _LOGGER.debug("Found %d VMs on node %s", len(vms), node_name)
-                except Exception as e:
-                    _LOGGER.warning("Failed to get VMs from node %s: %s", node_name, e)
-                
-                try:
-                    # Get containers (LXC)
-                    containers = self.api.nodes(node_name).lxc.get()
-                    for container in containers:
-                        container["node"] = node_name
-                        container["type"] = "lxc"
-                    all_containers.extend(containers)
-                    _LOGGER.debug("Found %d containers on node %s", len(containers), node_name)
-                except Exception as e:
-                    _LOGGER.warning("Failed to get containers from node %s: %s", node_name, e)
+            if len(nodes) == 1:
+                # Single node - no need for threading overhead
+                node_name = nodes[0]["node"]
+                node_data = self._fetch_node_data(node_name)
+                all_vms.extend(node_data["vms"])
+                all_containers.extend(node_data["containers"])
+            else:
+                # Multiple nodes - use concurrent fetching
+                with ThreadPoolExecutor(max_workers=min(len(nodes), 4)) as executor:
+                    # Submit all node data fetching tasks
+                    future_to_node = {
+                        executor.submit(self._fetch_node_data, node["node"]): node["node"]
+                        for node in nodes
+                    }
+                    
+                    # Collect results as they complete
+                    for future in as_completed(future_to_node):
+                        node_name = future_to_node[future]
+                        try:
+                            node_data = future.result(timeout=10)  # 10 second timeout per node
+                            all_vms.extend(node_data["vms"])
+                            all_containers.extend(node_data["containers"])
+                        except Exception as e:
+                            _LOGGER.error("Failed to fetch data from node %s: %s", node_name, e)
             
             result = {
                 "cluster_status": cluster_status,
@@ -128,8 +176,20 @@ class ProxmoxVEClient:
                 "containers": all_containers,
             }
             
-            _LOGGER.info("Successfully fetched Proxmox VE data: %d nodes, %d VMs, %d containers", 
-                        len(nodes), len(all_vms), len(all_containers))
+            # Performance logging
+            if hasattr(asyncio, 'get_event_loop'):
+                end_time = asyncio.get_event_loop().time()
+                duration = end_time - start_time
+                _LOGGER.info(
+                    "Proxmox VE data fetch completed in %.2fs: %d nodes, %d VMs, %d containers", 
+                    duration, len(nodes), len(all_vms), len(all_containers)
+                )
+            else:
+                _LOGGER.info(
+                    "Successfully fetched Proxmox VE data: %d nodes, %d VMs, %d containers", 
+                    len(nodes), len(all_vms), len(all_containers)
+                )
+            
             return result
             
         except AuthenticationError as e:

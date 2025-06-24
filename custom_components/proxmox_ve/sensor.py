@@ -116,6 +116,7 @@ async def async_setup_entry(
     
     if coordinator.data:
         host = entry.data["host"]
+        port = entry.data.get("port", 8006)
         
         # Add node sensors - exact same logic as old integration
         for node in coordinator.data.get("nodes", []):
@@ -128,7 +129,7 @@ async def async_setup_entry(
                 name=f"Proxmox VE Node {node_name}",
                 manufacturer="Proxmox",
                 model="Node",
-                configuration_url=f"https://{host}/"
+                configuration_url=f"https://{host}:{port}/"
             )
             
             for attr_name in NODE_SENSORS:
@@ -158,7 +159,7 @@ async def async_setup_entry(
                 manufacturer="Proxmox",
                 model="VM",
                 via_device=(DOMAIN, f"node_{host}_{node_name}"),
-                configuration_url=f"https://{host}/"
+                configuration_url=f"https://{host}:{port}/"
             )
             
             for attr_name in VM_SENSORS:
@@ -188,7 +189,7 @@ async def async_setup_entry(
                 manufacturer="Proxmox",
                 model="Container",
                 via_device=(DOMAIN, f"node_{host}_{node_name}"),
-                configuration_url=f"https://{host}/"
+                configuration_url=f"https://{host}:{port}/"
             )
             
             for attr_name in CONTAINER_SENSORS:
