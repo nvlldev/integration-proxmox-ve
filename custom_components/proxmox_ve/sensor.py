@@ -345,61 +345,9 @@ async def async_setup_entry(
             _LOGGER.debug("Sample VM data: %s", all_vms[0] if all_vms else "No VMs")
             _LOGGER.debug("=== COORDINATOR UPDATE DATA FUNCTION COMPLETED ===")
             
-            # Workaround: Manually notify entities after data update
-            # This is needed because the Home Assistant DataUpdateCoordinator is not properly notifying entities
-            coordinator_key = f"{entry.entry_id}_coordinator"
-            coordinator = hass.data[DOMAIN].get(coordinator_key)
-            if coordinator:
-                _LOGGER.debug("Manually notifying entities after data update")
-                try:
-                    # Debug: Check coordinator state before refresh
-                    if hasattr(coordinator, '_listeners'):
-                        _LOGGER.debug("Coordinator has %s listeners before refresh", len(coordinator._listeners))
-                        for i, listener in enumerate(coordinator._listeners):
-                            if hasattr(listener, '__self__'):
-                                entity_name = getattr(listener.__self__, '_attr_name', f'Unknown entity {i}')
-                                _LOGGER.debug("Listener %s: %s", i+1, entity_name)
-                            else:
-                                _LOGGER.debug("Listener %s: %s", i+1, type(listener))
-                    else:
-                        _LOGGER.warning("Coordinator does not have _listeners attribute")
-                    
-                    # Use the proper Home Assistant way to notify entities
-                    # Instead of calling listeners directly, we'll trigger a refresh
-                    # which should properly notify all registered entities
-                    await coordinator.async_request_refresh()
-                    _LOGGER.debug("Successfully triggered coordinator refresh for entity notification")
-                    
-                    # Debug: Check if entities were notified
-                    _LOGGER.debug("Coordinator refresh completed, checking if entities were notified")
-                    
-                    # Test: Manually trigger an entity update to see if the method works
-                    if hasattr(coordinator, '_listeners') and coordinator._listeners:
-                        _LOGGER.debug("Testing manual entity update...")
-                        test_entity = None
-                        for listener in coordinator._listeners:
-                            if hasattr(listener, '__self__') and hasattr(listener.__self__, '_attr_name'):
-                                test_entity = listener.__self__
-                                break
-                        
-                        if test_entity:
-                            _LOGGER.debug("Testing manual update for entity: %s", test_entity._attr_name)
-                            old_value = getattr(test_entity, '_attr_native_value', 'Unknown')
-                            try:
-                                await test_entity.async_handle_coordinator_update()
-                                new_value = getattr(test_entity, '_attr_native_value', 'Unknown')
-                                _LOGGER.debug("Manual update test: %s -> %s", old_value, new_value)
-                            except Exception as e:
-                                _LOGGER.error("Error in manual update test: %s", e)
-                        else:
-                            _LOGGER.warning("No test entity found for manual update test")
-                    
-                    # Note: Removed manual notification due to listener corruption issues
-                    # The coordinator should handle entity notifications automatically
-                    _LOGGER.debug("Coordinator refresh completed, entities should be notified automatically")
-                    
-                except Exception as e:
-                    _LOGGER.error("Error triggering coordinator refresh for entity notification: %s", e)
+            # The coordinator will automatically notify entities after data update
+            # No manual notification needed with proper entity registration
+            _LOGGER.debug("Data update completed, entities will be notified automatically")
             
             return result_data
         except AuthenticationError as error:
@@ -616,32 +564,23 @@ async def async_setup_entry(
             _LOGGER.info("Successfully added %s Proxmox VE entities", len(entities))
             _LOGGER.debug("Coordinator listeners count: %s", len(coordinator._listeners) if hasattr(coordinator, '_listeners') else 'Unknown')
             
-            # Test coordinator update to see if entities are notified
-            _LOGGER.debug("Testing coordinator update to verify entity notifications...")
+            # Initial coordinator refresh to verify entities are properly notified
+            _LOGGER.debug("Testing initial coordinator refresh...")
             try:
                 await coordinator.async_request_refresh()
-                _LOGGER.debug("Coordinator refresh test completed")
+                _LOGGER.debug("Initial coordinator refresh completed successfully")
                 
-                # Check if entities were notified
+                # Verify listener registration
                 if hasattr(coordinator, '_listeners'):
-                    _LOGGER.debug("Coordinator has %s listeners after refresh", len(coordinator._listeners))
+                    _LOGGER.debug("Coordinator has %s registered listeners", len(coordinator._listeners))
+                    for i, listener in enumerate(coordinator._listeners[:3]):  # Log first 3 listeners
+                        if hasattr(listener, '__self__') and hasattr(listener.__self__, '_attr_name'):
+                            _LOGGER.debug("  Listener %d: %s", i+1, listener.__self__._attr_name)
                 else:
                     _LOGGER.warning("Coordinator does not have _listeners attribute")
-                    
-                # Wait a moment and test again to see if entities are updated
-                import asyncio
-                await asyncio.sleep(1)
-                _LOGGER.debug("Testing second coordinator refresh...")
-                await coordinator.async_request_refresh()
-                _LOGGER.debug("Second coordinator refresh test completed")
-                
-                # Manually notify all entities
-                # Note: Removed manual notification due to listener corruption issues
-                # The coordinator should handle entity notifications automatically
-                _LOGGER.debug("Coordinator refresh completed, entities should be notified automatically")
                 
             except Exception as e:
-                _LOGGER.error("Error testing coordinator refresh: %s", e)
+                _LOGGER.error("Error during initial coordinator refresh: %s", e)
                 
         except Exception as e:
             _LOGGER.error("Error adding entities: %s", e)
@@ -683,21 +622,22 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         self._device_name = device_name
 
         _LOGGER.debug("Sensor entity created: %s with initial value: %s", self._attr_name, self._attr_native_value)
-        _LOGGER.debug("Coordinator listeners count after entity creation: %s", len(coordinator._listeners) if hasattr(coordinator, '_listeners') else 'Unknown')
         
-        # Debug: Check if this entity is properly registered with the coordinator
+        # Ensure entity is properly registered with coordinator
+        # This fixes the core issue where entities weren't receiving updates
+        if hasattr(coordinator, 'async_add_listener'):
+            coordinator.async_add_listener(self.async_handle_coordinator_update)
+            _LOGGER.debug("Entity %s: Registered with coordinator using async_add_listener", self._attr_name)
+        elif hasattr(coordinator, '_listeners'):
+            if self.async_handle_coordinator_update not in coordinator._listeners:
+                coordinator._listeners.append(self.async_handle_coordinator_update)
+                _LOGGER.debug("Entity %s: Added to coordinator _listeners directly", self._attr_name)
+        else:
+            _LOGGER.warning("Entity %s: Unable to register with coordinator - no listener mechanism found", self._attr_name)
+        
+        # Verify registration
         if hasattr(coordinator, '_listeners'):
-            _LOGGER.debug("Entity %s: Coordinator has %s listeners", self._attr_name, len(coordinator._listeners))
-            # Check if our update method is in the listeners
-            entity_update_method = self.async_handle_coordinator_update
-            found = False
-            for i, listener in enumerate(coordinator._listeners):
-                if hasattr(listener, '__self__') and listener.__self__ == self:
-                    _LOGGER.debug("Entity %s: Found our update method at listener index %s", self._attr_name, i)
-                    found = True
-                    break
-            if not found:
-                _LOGGER.warning("Entity %s: Our update method NOT found in coordinator listeners!", self._attr_name)
+            _LOGGER.debug("Entity %s: Coordinator now has %s listeners", self._attr_name, len(coordinator._listeners))
         else:
             _LOGGER.warning("Entity %s: Coordinator does not have _listeners attribute", self._attr_name)
 
@@ -772,7 +712,8 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.debug("Comparing node ID: %s (type: %s) with device ID: %s (type: %s)", 
                              node_id, type(node_id), self._device_id, type(self._device_id))
                 
-                if node_id == self._device_id:
+                # Fix: Convert both IDs to strings for reliable comparison
+                if str(node_id) == str(self._device_id):
                     _LOGGER.debug("Found matching node: %s", node.get("node"))
                     old_value = self._attr_native_value
                     self._update_node_value(node)
@@ -790,7 +731,8 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.debug("Comparing VM ID: %s (type: %s) with device ID: %s (type: %s)", 
                              vm_id, type(vm_id), self._device_id, type(self._device_id))
                 
-                if vm_id == self._device_id:
+                # Fix: Convert both IDs to strings for reliable comparison
+                if str(vm_id) == str(self._device_id):
                     _LOGGER.debug("Found matching VM: %s", vm.get("vmid"))
                     old_value = self._attr_native_value
                     self._update_vm_value(vm)
@@ -808,7 +750,8 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.debug("Comparing container ID: %s (type: %s) with device ID: %s (type: %s)", 
                              container_id, type(container_id), self._device_id, type(self._device_id))
                 
-                if container_id == self._device_id:
+                # Fix: Convert both IDs to strings for reliable comparison
+                if str(container_id) == str(self._device_id):
                     _LOGGER.debug("Found matching container: %s", container_id)
                     old_value = self._attr_native_value
                     self._update_container_value(container)
@@ -1008,27 +951,17 @@ async def async_trigger_manual_update(hass: HomeAssistant, entry_id: str) -> Non
     _LOGGER.debug("=== MANUAL UPDATE COMPLETED ===")
 
 class ProxmoxDataUpdateCoordinator(DataUpdateCoordinator):
-    """Custom coordinator that properly notifies entities."""
+    """Custom coordinator with enhanced debugging."""
     
     async def async_request_refresh(self) -> None:
-        """Request a refresh of the data and notify all entities."""
+        """Request a refresh of the data."""
         _LOGGER.debug("ProxmoxDataUpdateCoordinator: Requesting refresh")
         
-        # Call the parent method to update data
+        # Call the parent method to update data and notify entities
         await super().async_request_refresh()
         
-        # Manually notify all entities after data update
+        # Log listener status for debugging
         if hasattr(self, '_listeners') and self._listeners:
-            _LOGGER.debug("ProxmoxDataUpdateCoordinator: Notifying %s entities", len(self._listeners))
-            for listener in self._listeners:
-                try:
-                    # Check if this is a bound method (entity update method)
-                    if hasattr(listener, '__self__') and hasattr(listener.__self__, 'async_handle_coordinator_update'):
-                        await listener.__self__.async_handle_coordinator_update()
-                        _LOGGER.debug("ProxmoxDataUpdateCoordinator: Successfully notified entity")
-                    else:
-                        _LOGGER.debug("ProxmoxDataUpdateCoordinator: Skipping non-entity listener")
-                except Exception as e:
-                    _LOGGER.error("ProxmoxDataUpdateCoordinator: Error notifying entity: %s", e)
+            _LOGGER.debug("ProxmoxDataUpdateCoordinator: Has %s registered listeners", len(self._listeners))
         else:
-            _LOGGER.debug("ProxmoxDataUpdateCoordinator: No listeners to notify")
+            _LOGGER.debug("ProxmoxDataUpdateCoordinator: No listeners registered")
