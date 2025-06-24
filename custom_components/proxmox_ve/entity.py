@@ -29,13 +29,22 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
     @property
     def device_info(self) -> DeviceInfo:
         """Return device information."""
+        # Proper capitalization for resource types
+        resource_type_names = {
+            "node": "Node",
+            "vm": "VM", 
+            "container": "Container",
+        }
+        
+        display_name = resource_type_names.get(self._resource_type, self._resource_type.title())
+        
         resource = self._get_resource()
         if resource is None:
             return DeviceInfo(
                 identifiers={(DOMAIN, f"{self._resource_type}_{self._resource_id}")},
-                name=f"Proxmox VE {self._resource_type.title()} {self._resource_id}",
+                name=f"Proxmox VE {display_name} {self._resource_id}",
                 manufacturer="Proxmox",
-                model=self._resource_type.title(),
+                model=display_name,
             )
 
         host = self.coordinator.config_entry.data["host"]
@@ -43,9 +52,9 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
 
         device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{self._resource_type}_{self._resource_id}")},
-            name=f"Proxmox VE {self._resource_type.title()} {resource.name}",
+            name=f"Proxmox VE {display_name} {resource.name}",
             manufacturer="Proxmox",
-            model=self._resource_type.title(),
+            model=display_name,
             configuration_url=f"https://{host}:{port}/",
         )
 
