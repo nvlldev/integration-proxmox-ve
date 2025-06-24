@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from proxmoxer import ProxmoxAPI
@@ -110,7 +109,7 @@ class ProxmoxVEClient:
         start_time = time.time()
         
         try:
-            _LOGGER.debug("Starting optimized data fetch from Proxmox VE at %s:%s", self.host, self.port)
+            _LOGGER.debug("Starting data fetch from Proxmox VE at %s:%s", self.host, self.port)
             
             # Get basic cluster info and nodes first (sequential, required for further calls)
             try:
@@ -132,7 +131,7 @@ class ProxmoxVEClient:
                     "containers": [],
                 }
             
-            # Get cluster status in parallel (optional, don't fail if it doesn't work)
+            # Get cluster status (optional, don't fail if it doesn't work)
             cluster_status = []
             try:
                 cluster_status = self.api.cluster.status.get()
@@ -140,34 +139,18 @@ class ProxmoxVEClient:
             except Exception as e:
                 _LOGGER.debug("Cluster status not available (single node setup?): %s", e)
             
-            # Fetch data from all nodes concurrently using ThreadPoolExecutor
+            # Fetch data from all nodes sequentially to avoid threading issues
             all_vms = []
             all_containers = []
             
-            if len(nodes) == 1:
-                # Single node - no need for threading overhead
-                node_name = nodes[0]["node"]
-                node_data = self._fetch_node_data(node_name)
-                all_vms.extend(node_data["vms"])
-                all_containers.extend(node_data["containers"])
-            else:
-                # Multiple nodes - use concurrent fetching
-                with ThreadPoolExecutor(max_workers=min(len(nodes), 4)) as executor:
-                    # Submit all node data fetching tasks
-                    future_to_node = {
-                        executor.submit(self._fetch_node_data, node["node"]): node["node"]
-                        for node in nodes
-                    }
-                    
-                    # Collect results as they complete
-                    for future in as_completed(future_to_node):
-                        node_name = future_to_node[future]
-                        try:
-                            node_data = future.result(timeout=10)  # 10 second timeout per node
-                            all_vms.extend(node_data["vms"])
-                            all_containers.extend(node_data["containers"])
-                        except Exception as e:
-                            _LOGGER.error("Failed to fetch data from node %s: %s", node_name, e)
+            for node in nodes:
+                node_name = node["node"]
+                try:
+                    node_data = self._fetch_node_data(node_name)
+                    all_vms.extend(node_data["vms"])
+                    all_containers.extend(node_data["containers"])
+                except Exception as e:
+                    _LOGGER.error("Failed to fetch data from node %s: %s", node_name, e)
             
             result = {
                 "cluster_status": cluster_status,
