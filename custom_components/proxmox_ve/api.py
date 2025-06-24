@@ -53,6 +53,7 @@ class ProxmoxVEClient:
                         password=self.password,
                         verify_ssl=self.verify_ssl,
                         backend='https',
+                        timeout=3,  # 3 second timeout for faster failures
                     )
                 else:
                     self._api = ProxmoxAPI(
@@ -63,6 +64,7 @@ class ProxmoxVEClient:
                         token_value=self.token_value,
                         verify_ssl=self.verify_ssl,
                         backend='https',
+                        timeout=3,  # 3 second timeout for faster failures
                     )
             except AuthenticationError as e:
                 _LOGGER.error("Authentication failed for user %s@%s: %s", self.username, self.host, e)
@@ -73,12 +75,20 @@ class ProxmoxVEClient:
         return self._api
 
     def _fetch_node_data(self, node_name: str) -> dict[str, Any]:
-        """Fetch data for a specific node concurrently."""
+        """Fetch data for a specific node with fast timeout handling."""
         node_data = {
             "name": node_name,
             "vms": [],
             "containers": [],
         }
+        
+        # Quick connectivity test - if this fails, skip the node entirely
+        try:
+            # Try a quick API call first to test connectivity
+            self.api.nodes(node_name).status.get()
+        except Exception as e:
+            _LOGGER.warning("Node %s is unreachable, skipping: %s", node_name, e)
+            return node_data
         
         try:
             # Get VMs (QEMU) for this node
