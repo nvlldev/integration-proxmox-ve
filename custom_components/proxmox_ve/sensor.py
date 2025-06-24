@@ -352,24 +352,36 @@ async def async_setup_entry(
             _LOGGER.error("Error type: %s", type(error).__name__)
             raise UpdateFailed(f"Unexpected error: {error}") from error
 
-    coordinator = DataUpdateCoordinator(
-        hass,
-        _LOGGER,
-        name="proxmox",
-        update_method=async_update_data,
-        update_interval=timedelta(seconds=entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))),
-    )
+    # Check if coordinator already exists
+    coordinator_key = f"{entry.entry_id}_coordinator"
+    existing_coordinator = hass.data[DOMAIN].get(coordinator_key)
+    
+    if existing_coordinator:
+        # Update the existing coordinator's update interval
+        new_interval = timedelta(seconds=entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
+        existing_coordinator.update_interval = new_interval
+        _LOGGER.debug("Updated existing coordinator with new interval: %s seconds", new_interval.total_seconds())
+        coordinator = existing_coordinator
+    else:
+        # Create new coordinator
+        coordinator = DataUpdateCoordinator(
+            hass,
+            _LOGGER,
+            name="proxmox",
+            update_method=async_update_data,
+            update_interval=timedelta(seconds=entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))),
+        )
+        # Store coordinator in hass data
+        hass.data[DOMAIN][coordinator_key] = coordinator
 
-    # Store coordinator in hass data
-    hass.data[DOMAIN][f"{entry.entry_id}_coordinator"] = coordinator
-
-    # Wait for the first data fetch
-    try:
-        await coordinator.async_config_entry_first_refresh()
-        _LOGGER.debug("Initial data fetch completed successfully")
-    except Exception as e:
-        _LOGGER.error("Failed to fetch initial data: %s", e)
-        # Still try to create entities with whatever data we have
+    # Wait for the first data fetch only if this is a new coordinator
+    if not existing_coordinator:
+        try:
+            await coordinator.async_config_entry_first_refresh()
+            _LOGGER.debug("Initial data fetch completed successfully")
+        except Exception as e:
+            _LOGGER.error("Failed to fetch initial data: %s", e)
+            # Still try to create entities with whatever data we have
 
     # Create entities based on available data
     entities = []

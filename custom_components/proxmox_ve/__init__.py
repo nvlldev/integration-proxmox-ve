@@ -1,6 +1,7 @@
 """The Proxmox VE integration."""
 from __future__ import annotations
 
+import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant
@@ -17,7 +18,31 @@ from .const import (
     DOMAIN,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 PLATFORMS: list[Platform] = [Platform.SENSOR]
+
+
+async def async_restart_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Restart the coordinator with updated configuration."""
+    # Get the coordinator key
+    coordinator_key = f"{entry.entry_id}_coordinator"
+    
+    # Check if coordinator exists
+    if coordinator_key in hass.data[DOMAIN]:
+        coordinator = hass.data[DOMAIN][coordinator_key]
+        
+        # Update the coordinator's update interval
+        from datetime import timedelta
+        from .const import DEFAULT_UPDATE_INTERVAL
+        
+        new_interval = timedelta(seconds=entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
+        coordinator.update_interval = new_interval
+        
+        # Trigger an immediate update
+        await coordinator.async_request_refresh()
+        
+        _LOGGER.debug("Updated coordinator with new interval: %s seconds", new_interval.total_seconds())
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -46,6 +71,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         raise ConfigEntryNotReady from exc
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = client
+
+    # Set up a listener for config entry updates
+    entry.async_on_unload(
+        entry.add_update_listener(async_restart_coordinator)
+    )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
