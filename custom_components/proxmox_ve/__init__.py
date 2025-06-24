@@ -16,9 +16,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Proxmox VE from a config entry."""
     _LOGGER.debug("Setting up Proxmox VE integration")
     
+    # Combine data and options for configuration
+    config = {**entry.data, **entry.options}
+    
     coordinator = ProxmoxVEDataUpdateCoordinator(
         hass=hass,
-        config=entry.data,
+        config=config,
         entry=entry,
     )
     
@@ -34,6 +37,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Setup platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     
+    # Listen for options changes
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    
     _LOGGER.info("Proxmox VE integration setup complete")
     return True
 
@@ -48,3 +54,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass.data[DOMAIN].pop(entry.entry_id)
     
     return unload_ok
+
+
+async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload config entry when options change."""
+    _LOGGER.debug("Reloading Proxmox VE integration due to options change")
+    await hass.config_entries.async_reload(entry.entry_id)

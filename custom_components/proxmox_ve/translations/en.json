@@ -26,5 +26,16 @@
     "abort": {
       "already_configured": "Device is already configured"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Proxmox VE Options",
+        "description": "Configure Proxmox VE integration options",
+        "data": {
+          "update_interval": "Update Interval (seconds)"
+        }
+      }
+    }
   }
 }
