@@ -573,11 +573,10 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        # Always update from coordinator data before returning
-        self._handle_coordinator_update()
+        # Just return the cached value
         return self._attr_native_value
 
-    def _handle_coordinator_update(self) -> None:
+    def handle_coordinator_update(self) -> None:
         if not self.coordinator.data:
             _LOGGER.debug("No coordinator data available for sensor %s", self._attr_name)
             return
@@ -604,8 +603,9 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                     self._update_container_value(container)
                     _LOGGER.debug("Updated container sensor %s with value: %s", self._attr_name, self._attr_native_value)
                     break
+
         # Notify Home Assistant of the new state
-        self.async_write_ha_state()
+        super().handle_coordinator_update()
 
     def _update_node_value(self, node_data):
         """Update sensor value from node data."""
