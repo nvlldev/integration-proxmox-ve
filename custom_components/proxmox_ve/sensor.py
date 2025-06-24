@@ -344,6 +344,21 @@ async def async_setup_entry(
             _LOGGER.debug("Sample node data: %s", nodes[0] if nodes else "No nodes")
             _LOGGER.debug("Sample VM data: %s", all_vms[0] if all_vms else "No VMs")
             _LOGGER.debug("=== COORDINATOR UPDATE DATA FUNCTION COMPLETED ===")
+            
+            # Workaround: Manually notify entities after data update
+            # This is needed because the Home Assistant DataUpdateCoordinator is not properly notifying entities
+            coordinator_key = f"{entry.entry_id}_coordinator"
+            coordinator = hass.data[DOMAIN].get(coordinator_key)
+            if coordinator and hasattr(coordinator, '_listeners') and coordinator._listeners:
+                _LOGGER.debug("Manually notifying %s entities after data update", len(coordinator._listeners))
+                for i, listener in enumerate(coordinator._listeners):
+                    try:
+                        _LOGGER.debug("Manually notifying entity %s", i+1)
+                        listener()
+                        _LOGGER.debug("Successfully manually notified entity %s", i+1)
+                    except Exception as e:
+                        _LOGGER.error("Error manually notifying entity %s: %s", i+1, e)
+            
             return result_data
         except AuthenticationError as error:
             _LOGGER.error("Authentication error fetching Proxmox VE data: %s", error)
@@ -554,6 +569,21 @@ async def async_setup_entry(
                 _LOGGER.debug("Testing second coordinator refresh...")
                 await coordinator.async_request_refresh()
                 _LOGGER.debug("Second coordinator refresh test completed")
+                
+                # Manually notify entities if they weren't notified automatically
+                if hasattr(coordinator, '_listeners') and coordinator._listeners:
+                    _LOGGER.debug("Manually notifying %s entities", len(coordinator._listeners))
+                    for i, listener in enumerate(coordinator._listeners):
+                        try:
+                            _LOGGER.debug("Manually notifying entity %s", i+1)
+                            listener()
+                            _LOGGER.debug("Successfully manually notified entity %s", i+1)
+                        except Exception as e:
+                            _LOGGER.error("Error manually notifying entity %s: %s", i+1, e)
+                
+                # Store the coordinator for manual updates
+                hass.data[DOMAIN][f"{entry.entry_id}_manual_update_coordinator"] = coordinator
+                _LOGGER.debug("Stored coordinator for manual updates")
                 
             except Exception as e:
                 _LOGGER.error("Error testing coordinator refresh: %s", e)
@@ -806,3 +836,48 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         
         _LOGGER.debug("Updated value: %s", self._attr_native_value)
         _LOGGER.debug("=== COORDINATOR UPDATE TEST COMPLETED ===")
+
+    async def force_update(self) -> None:
+        """Force an update of this entity."""
+        _LOGGER.debug("=== FORCING UPDATE FOR %s ===", self._attr_name)
+        _LOGGER.debug("Current value: %s", self._attr_native_value)
+        
+        # Manually call the update method
+        await self.async_handle_coordinator_update()
+        
+        _LOGGER.debug("Updated value: %s", self._attr_native_value)
+        _LOGGER.debug("=== FORCE UPDATE COMPLETED ===")
+
+async def async_trigger_manual_update(hass: HomeAssistant, entry_id: str) -> None:
+    """Manually trigger an update for all entities."""
+    _LOGGER.debug("=== MANUAL UPDATE TRIGGERED FOR ENTRY %s ===", entry_id)
+    
+    coordinator_key = f"{entry_id}_coordinator"
+    coordinator = hass.data[DOMAIN].get(coordinator_key)
+    
+    if not coordinator:
+        _LOGGER.error("No coordinator found for entry %s", entry_id)
+        return
+    
+    try:
+        _LOGGER.debug("Triggering manual coordinator refresh...")
+        await coordinator.async_request_refresh()
+        _LOGGER.debug("Manual coordinator refresh completed")
+        
+        # Manually notify all entities
+        if hasattr(coordinator, '_listeners') and coordinator._listeners:
+            _LOGGER.debug("Manually notifying %s entities", len(coordinator._listeners))
+            for i, listener in enumerate(coordinator._listeners):
+                try:
+                    _LOGGER.debug("Manually notifying entity %s", i+1)
+                    listener()
+                    _LOGGER.debug("Successfully manually notified entity %s", i+1)
+                except Exception as e:
+                    _LOGGER.error("Error manually notifying entity %s: %s", i+1, e)
+        else:
+            _LOGGER.warning("No listeners found on coordinator")
+            
+    except Exception as e:
+        _LOGGER.error("Error during manual update: %s", e)
+    
+    _LOGGER.debug("=== MANUAL UPDATE COMPLETED ===")
