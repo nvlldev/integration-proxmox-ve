@@ -29,6 +29,7 @@ class ProxmoxVEDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.config = config
         self.entry = entry
         self._consecutive_failures = 0
+        self._known_nodes = set()  # Track nodes we've seen before
         
         update_interval = timedelta(
             seconds=config.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)
@@ -56,6 +57,31 @@ class ProxmoxVEDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             
             # Success - reset failure counter
             self._consecutive_failures = 0
+            
+            # Track nodes we've seen for future reference
+            for node in data.get("nodes", []):
+                node_name = node.get("node")
+                if node_name:
+                    self._known_nodes.add(node_name)
+            
+            # Add any previously known nodes that aren't in current data as unavailable
+            current_node_names = {node.get("node") for node in data.get("nodes", [])}
+            for known_node in self._known_nodes:
+                if known_node not in current_node_names:
+                    _LOGGER.info("Adding previously known node %s as unavailable", known_node)
+                    data["nodes"].append({
+                        "node": known_node,
+                        "available": False,
+                        "load_average": [0.0, 0.0, 0.0],
+                        "cpu_info": {},
+                        "cpu": 0,
+                        "mem": 0,
+                        "maxmem": 1,
+                        "disk": 0,
+                        "maxdisk": 1,
+                        "uptime": 0,
+                        "status": "unknown"
+                    })
             
             fetch_duration = time.time() - start_time
             _LOGGER.info(

@@ -118,18 +118,17 @@ async def async_setup_entry(
         host = entry.data["host"]
         port = entry.data.get("port", 8006)
         
-        # Add node sensors - only for available nodes
+        # Add node sensors - create for all nodes, let individual sensors handle availability
         for node in coordinator.data.get("nodes", []):
             node_name = node.get("node", "unknown")
             node_id = node_name
             node_available = node.get("available", True)  # Default to True for backward compatibility
             
-            # Log node availability status
+            # Log node availability status but create sensors anyway
             if not node_available:
-                _LOGGER.warning("Node %s is not available, skipping sensor creation", node_name)
-                continue
-                
-            _LOGGER.debug("Creating sensors for available node %s", node_name)
+                _LOGGER.info("Node %s is currently unavailable, but creating sensors for when it comes back online", node_name)
+            else:
+                _LOGGER.debug("Creating sensors for available node %s", node_name)
             
             # Device info for node - exact same as old integration
             node_device_info = DeviceInfo(
@@ -349,6 +348,20 @@ class ProxmoxVEBackwardCompatibleSensor(CoordinatorEntity[ProxmoxVEDataUpdateCoo
             for node in self.coordinator.data.get("nodes", []):
                 if str(node.get("node")) == str(self._device_id):
                     return node
+            # If node not found in current data, return a basic node structure
+            # This handles cases where nodes are temporarily missing from the API response
+            return {
+                "node": self._device_id,
+                "available": False,
+                "load_average": [0.0, 0.0, 0.0],
+                "cpu_info": {},
+                "cpu": 0,
+                "mem": 0,
+                "maxmem": 1,
+                "disk": 0,
+                "maxdisk": 1,
+                "uptime": 0,
+            }
         elif self._device_type == "VM":
             for vm in self.coordinator.data.get("vms", []):
                 if str(vm.get("vmid")) == str(self._device_id):
