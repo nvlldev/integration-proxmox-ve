@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script to verify that the manual notification fix works correctly.
+Test script to debug why entities aren't being notified by the coordinator.
 """
 
 import asyncio
@@ -11,7 +11,7 @@ from datetime import timedelta
 logging.basicConfig(level=logging.DEBUG)
 _LOGGER = logging.getLogger(__name__)
 
-# Mock Home Assistant DataUpdateCoordinator (simulating the issue)
+# Mock Home Assistant DataUpdateCoordinator
 class MockDataUpdateCoordinator:
     def __init__(self, hass, logger, name, update_method, update_interval):
         self.hass = hass
@@ -37,37 +37,63 @@ class MockDataUpdateCoordinator:
             self.data = await self.update_method()
             _LOGGER.debug("Update method completed successfully")
             
-            # NOTE: We're NOT automatically notifying listeners to simulate the Home Assistant issue
-            _LOGGER.debug("NOT automatically notifying listeners (simulating the issue)")
+            # Notify all listeners
+            _LOGGER.debug("Notifying %s listeners", len(self._listeners))
+            for i, listener in enumerate(self._listeners):
+                try:
+                    _LOGGER.debug("Notifying listener %s", i+1)
+                    listener()
+                    _LOGGER.debug("Successfully notified listener %s", i+1)
+                except Exception as e:
+                    _LOGGER.error("Error notifying listener %s: %s", i+1, e)
             
             _LOGGER.debug("=== COORDINATOR REFRESH COMPLETED ===")
         except Exception as e:
             _LOGGER.error("Error in coordinator refresh: %s", e)
 
+# Mock CoordinatorEntity base class
 class MockCoordinatorEntity:
-    def __init__(self, coordinator, device_type, device_id, attr_name):
+    def __init__(self, coordinator):
         self.coordinator = coordinator
+        self.update_count = 0
+        # Register with coordinator
+        coordinator.add_listener(self._handle_coordinator_update)
+        _LOGGER.debug("Created coordinator entity")
+    
+    def _handle_coordinator_update(self):
+        """Handle updated data from the coordinator."""
+        self.update_count += 1
+        _LOGGER.debug("=== ENTITY UPDATE TRIGGERED (count: %s) ===", self.update_count)
+        
+        if not self.coordinator.data:
+            _LOGGER.debug("No coordinator data available")
+            return
+        
+        _LOGGER.debug("Entity updated with new data")
+        _LOGGER.debug("Coordinator data keys: %s", list(self.coordinator.data.keys()))
+
+class MockSensor(MockCoordinatorEntity):
+    def __init__(self, coordinator, device_type, device_id, attr_name):
+        super().__init__(coordinator)
         self._device_type = device_type
         self._device_id = device_id
         self._raw_attr_name = attr_name
         self._attr_native_value = 0
         self._attr_name = f"Test {device_type} {attr_name}"
-        self.update_count = 0
-        
-        # Register with coordinator
-        coordinator.add_listener(self._handle_coordinator_update)
-        _LOGGER.debug("Created coordinator entity: %s", self._attr_name)
+        _LOGGER.debug("Created sensor: %s (ID: %s, Type: %s)", self._attr_name, device_id, device_type)
     
-    async def _handle_coordinator_update(self):
+    def _handle_coordinator_update(self):
         """Handle updated data from the coordinator."""
         self.update_count += 1
-        _LOGGER.debug("=== ENTITY UPDATE TRIGGERED FOR %s (count: %s) ===", self._attr_name, self.update_count)
+        _LOGGER.debug("=== SENSOR UPDATE TRIGGERED FOR %s (count: %s) ===", self._attr_name, self.update_count)
         
         if not self.coordinator.data:
-            _LOGGER.debug("No coordinator data available for %s", self._attr_name)
+            _LOGGER.debug("No coordinator data available for sensor %s", self._attr_name)
             return
         
-        _LOGGER.debug("Updating entity %s with new coordinator data", self._attr_name)
+        _LOGGER.debug("Updating sensor %s with new coordinator data", self._attr_name)
+        _LOGGER.debug("Device type: %s, Device ID: %s", self._device_type, self._device_id)
+        _LOGGER.debug("Raw attr name: %s", self._raw_attr_name)
         
         if self._device_type == "Node":
             for node in self.coordinator.data.get("nodes", []):
@@ -75,16 +101,19 @@ class MockCoordinatorEntity:
                     _LOGGER.debug("Found matching node: %s", node.get("node"))
                     old_value = self._attr_native_value
                     self._update_node_value(node)
-                    _LOGGER.debug("Updated node entity %s: %s -> %s", self._attr_name, old_value, self._attr_native_value)
+                    _LOGGER.debug("Updated node sensor %s: %s -> %s", self._attr_name, old_value, self._attr_native_value)
                     break
+            else:
+                _LOGGER.warning("No matching node found for device ID: %s", self._device_id)
     
     def _update_node_value(self, node_data):
-        """Update entity value from node data."""
+        """Update sensor value from node data."""
         if self._raw_attr_name == "cpu_usage_percent":
             self._attr_native_value = float(node_data.get("cpu", 0)) * 100
     
     @property
     def native_value(self):
+        _LOGGER.debug("Getting native_value for %s: %s", self._attr_name, self._attr_native_value)
         return self._attr_native_value
 
 async def mock_update_data():
@@ -101,30 +130,10 @@ async def mock_update_data():
         ]
     }
 
-async def manual_notify_entities(coordinator):
-    """Manually notify all entities (the fix)."""
-    if hasattr(coordinator, '_listeners') and coordinator._listeners:
-        _LOGGER.debug("Manually notifying %s entities after coordinator refresh", len(coordinator._listeners))
-        for i, listener in enumerate(coordinator._listeners):
-            try:
-                if hasattr(listener, '__self__') and hasattr(listener.__self__, '_attr_name'):
-                    entity_name = listener.__self__._attr_name
-                    _LOGGER.debug("Manually notifying entity %s: %s", i+1, entity_name)
-                    await listener()
-                    _LOGGER.debug("Successfully manually notified entity %s: %s", i+1, entity_name)
-                else:
-                    _LOGGER.debug("Manually notifying entity %s (unknown)", i+1)
-                    await listener()
-                    _LOGGER.debug("Successfully manually notified entity %s", i+1)
-            except Exception as e:
-                _LOGGER.error("Error manually notifying entity %s: %s", i+1, e)
-    else:
-        _LOGGER.warning("No listeners found on coordinator for manual notification")
-
-async def test_fix_verification():
-    """Test that the manual notification fix works correctly."""
+async def test_entity_notification_debug():
+    """Test entity notification debugging."""
     
-    _LOGGER.info("=== STARTING FIX VERIFICATION TEST ===")
+    _LOGGER.info("=== STARTING ENTITY NOTIFICATION DEBUG TEST ===")
     
     # Create mock hass
     mock_hass = type('MockHass', (), {})()
@@ -141,8 +150,8 @@ async def test_fix_verification():
     _LOGGER.debug("Created coordinator: %s", coordinator.name)
     
     # Create entities
-    cpu_entity = MockCoordinatorEntity(coordinator, "Node", "pve-0001", "cpu_usage_percent")
-    memory_entity = MockCoordinatorEntity(coordinator, "Node", "pve-0001", "memory_usage_percent")
+    cpu_entity = MockSensor(coordinator, "Node", "pve-0001", "cpu_usage_percent")
+    memory_entity = MockSensor(coordinator, "Node", "pve-0001", "memory_usage_percent")
     
     print(f"\nInitial state:")
     print(f"  Coordinator listeners: {len(coordinator._listeners)}")
@@ -151,22 +160,11 @@ async def test_fix_verification():
     print(f"  CPU entity updates: {cpu_entity.update_count}")
     print(f"  Memory entity updates: {memory_entity.update_count}")
     
-    # Test coordinator refresh (without automatic notification)
-    print("\nTesting coordinator refresh (without automatic notification)...")
+    # Test coordinator refresh
+    print("\nTesting coordinator refresh...")
     await coordinator.async_request_refresh()
     
-    print(f"\nAfter coordinator refresh (without notification):")
-    print(f"  Coordinator updates: {coordinator.update_count}")
-    print(f"  CPU entity value: {cpu_entity.native_value}%")
-    print(f"  Memory entity value: {memory_entity.native_value}%")
-    print(f"  CPU entity updates: {cpu_entity.update_count}")
-    print(f"  Memory entity updates: {memory_entity.update_count}")
-    
-    # Test manual notification (the fix)
-    print("\nTesting manual notification (the fix)...")
-    await manual_notify_entities(coordinator)
-    
-    print(f"\nAfter manual notification:")
+    print(f"\nAfter coordinator refresh:")
     print(f"  Coordinator updates: {coordinator.update_count}")
     print(f"  CPU entity value: {cpu_entity.native_value}%")
     print(f"  Memory entity value: {memory_entity.native_value}%")
@@ -180,25 +178,14 @@ async def test_fix_verification():
     # Trigger another refresh
     await coordinator.async_request_refresh()
     
-    print(f"\nAfter second refresh (without notification):")
+    print(f"\nAfter second refresh:")
     print(f"  Coordinator updates: {coordinator.update_count}")
     print(f"  CPU entity value: {cpu_entity.native_value}%")
     print(f"  Memory entity value: {memory_entity.native_value}%")
     print(f"  CPU entity updates: {cpu_entity.update_count}")
     print(f"  Memory entity updates: {memory_entity.update_count}")
     
-    # Apply manual notification again
-    print("\nApplying manual notification again...")
-    await manual_notify_entities(coordinator)
-    
-    print(f"\nAfter second manual notification:")
-    print(f"  Coordinator updates: {coordinator.update_count}")
-    print(f"  CPU entity value: {cpu_entity.native_value}%")
-    print(f"  Memory entity value: {memory_entity.native_value}%")
-    print(f"  CPU entity updates: {cpu_entity.update_count}")
-    print(f"  Memory entity updates: {memory_entity.update_count}")
-    
-    _LOGGER.info("=== FIX VERIFICATION TEST COMPLETED ===")
+    _LOGGER.info("=== ENTITY NOTIFICATION DEBUG TEST COMPLETED ===")
 
 if __name__ == "__main__":
-    asyncio.run(test_fix_verification()) 
+    asyncio.run(test_entity_notification_debug()) 

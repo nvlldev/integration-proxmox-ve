@@ -352,11 +352,67 @@ async def async_setup_entry(
             if coordinator:
                 _LOGGER.debug("Manually notifying entities after data update")
                 try:
+                    # Debug: Check coordinator state before refresh
+                    if hasattr(coordinator, '_listeners'):
+                        _LOGGER.debug("Coordinator has %s listeners before refresh", len(coordinator._listeners))
+                        for i, listener in enumerate(coordinator._listeners):
+                            if hasattr(listener, '__self__'):
+                                entity_name = getattr(listener.__self__, '_attr_name', f'Unknown entity {i}')
+                                _LOGGER.debug("Listener %s: %s", i+1, entity_name)
+                            else:
+                                _LOGGER.debug("Listener %s: %s", i+1, type(listener))
+                    else:
+                        _LOGGER.warning("Coordinator does not have _listeners attribute")
+                    
                     # Use the proper Home Assistant way to notify entities
                     # Instead of calling listeners directly, we'll trigger a refresh
                     # which should properly notify all registered entities
                     await coordinator.async_request_refresh()
                     _LOGGER.debug("Successfully triggered coordinator refresh for entity notification")
+                    
+                    # Debug: Check if entities were notified
+                    _LOGGER.debug("Coordinator refresh completed, checking if entities were notified")
+                    
+                    # Test: Manually trigger an entity update to see if the method works
+                    if hasattr(coordinator, '_listeners') and coordinator._listeners:
+                        _LOGGER.debug("Testing manual entity update...")
+                        test_entity = None
+                        for listener in coordinator._listeners:
+                            if hasattr(listener, '__self__') and hasattr(listener.__self__, '_attr_name'):
+                                test_entity = listener.__self__
+                                break
+                        
+                        if test_entity:
+                            _LOGGER.debug("Testing manual update for entity: %s", test_entity._attr_name)
+                            old_value = getattr(test_entity, '_attr_native_value', 'Unknown')
+                            try:
+                                await test_entity.async_handle_coordinator_update()
+                                new_value = getattr(test_entity, '_attr_native_value', 'Unknown')
+                                _LOGGER.debug("Manual update test: %s -> %s", old_value, new_value)
+                            except Exception as e:
+                                _LOGGER.error("Error in manual update test: %s", e)
+                        else:
+                            _LOGGER.warning("No test entity found for manual update test")
+                    
+                    # FIX: Manually notify all entities since the coordinator is not doing it automatically
+                    if hasattr(coordinator, '_listeners') and coordinator._listeners:
+                        _LOGGER.debug("Manually notifying %s entities after coordinator refresh", len(coordinator._listeners))
+                        for i, listener in enumerate(coordinator._listeners):
+                            try:
+                                if hasattr(listener, '__self__') and hasattr(listener.__self__, '_attr_name'):
+                                    entity_name = listener.__self__._attr_name
+                                    _LOGGER.debug("Manually notifying entity %s: %s", i+1, entity_name)
+                                    await listener()
+                                    _LOGGER.debug("Successfully manually notified entity %s: %s", i+1, entity_name)
+                                else:
+                                    _LOGGER.debug("Manually notifying entity %s (unknown)", i+1)
+                                    await listener()
+                                    _LOGGER.debug("Successfully manually notified entity %s", i+1)
+                            except Exception as e:
+                                _LOGGER.error("Error manually notifying entity %s: %s", i+1, e)
+                    else:
+                        _LOGGER.warning("No listeners found on coordinator for manual notification")
+                    
                 except Exception as e:
                     _LOGGER.error("Error triggering coordinator refresh for entity notification: %s", e)
             
@@ -629,6 +685,22 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
 
         _LOGGER.debug("Sensor entity created: %s with initial value: %s", self._attr_name, self._attr_native_value)
         _LOGGER.debug("Coordinator listeners count after entity creation: %s", len(coordinator._listeners) if hasattr(coordinator, '_listeners') else 'Unknown')
+        
+        # Debug: Check if this entity is properly registered with the coordinator
+        if hasattr(coordinator, '_listeners'):
+            _LOGGER.debug("Entity %s: Coordinator has %s listeners", self._attr_name, len(coordinator._listeners))
+            # Check if our update method is in the listeners
+            entity_update_method = self.async_handle_coordinator_update
+            found = False
+            for i, listener in enumerate(coordinator._listeners):
+                if hasattr(listener, '__self__') and listener.__self__ == self:
+                    _LOGGER.debug("Entity %s: Found our update method at listener index %s", self._attr_name, i)
+                    found = True
+                    break
+            if not found:
+                _LOGGER.warning("Entity %s: Our update method NOT found in coordinator listeners!", self._attr_name)
+        else:
+            _LOGGER.warning("Entity %s: Coordinator does not have _listeners attribute", self._attr_name)
 
         # Set state_class, device_class, unit_of_measurement, and icon
         self._attr_state_class = None
