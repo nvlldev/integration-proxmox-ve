@@ -685,9 +685,14 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        # Just return the cached value
+        """Return the current native value of the sensor."""
         _LOGGER.debug("Getting native_value for %s: %s", self._attr_name, self._attr_native_value)
         return self._attr_native_value
+    
+    @property
+    def state(self):
+        """Return the state of the sensor."""
+        return self.native_value
 
     async def async_handle_coordinator_update(self) -> None:
         _LOGGER.debug("=== COORDINATOR UPDATE TRIGGERED FOR %s ===", self._attr_name)
@@ -701,6 +706,10 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         _LOGGER.debug("[ASYNC] Updating sensor %s with new coordinator data", self._attr_name)
         _LOGGER.debug("Device type: %s, Device ID: %s", self._device_type, self._device_id)
         _LOGGER.debug("Raw attr name: %s", self._raw_attr_name)
+        _LOGGER.debug("Current entity state: %s", self._attr_native_value)
+        
+        # Store old value to detect changes
+        old_value = self._attr_native_value
 
         # Find the relevant data based on device type
         if self._device_type == "Node":
@@ -761,9 +770,24 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                 _LOGGER.warning("No matching container found for device ID: %s", self._device_id)
                 _LOGGER.debug("Available containers: %s", [(c.get("id") or c.get("vmid")) for c in self.coordinator.data.get("containers", [])])
 
-        # Notify Home Assistant of the new state
-        _LOGGER.debug("Calling super().async_handle_coordinator_update() for %s", self._attr_name)
-        await super().async_handle_coordinator_update()
+        # Check if the value actually changed
+        if self._attr_native_value != old_value:
+            _LOGGER.debug("Value changed for %s: %s -> %s", self._attr_name, old_value, self._attr_native_value)
+            
+            # Notify Home Assistant of the new state
+            _LOGGER.debug("Calling super().async_handle_coordinator_update() for %s", self._attr_name)
+            await super().async_handle_coordinator_update()
+            
+            # Explicitly write the state to Home Assistant to ensure UI updates
+            # This fixes the issue where last_updated changes but entity state doesn't
+            _LOGGER.debug("Explicitly writing HA state for %s with new value: %s", self._attr_name, self._attr_native_value)
+            self.async_write_ha_state()
+            _LOGGER.debug("State written to Home Assistant for %s", self._attr_name)
+        else:
+            _LOGGER.debug("No value change for %s (still %s), skipping state write", self._attr_name, self._attr_native_value)
+            # Still call super to maintain coordinator contract, but don't write state
+            await super().async_handle_coordinator_update()
+        
         _LOGGER.debug("=== COORDINATOR UPDATE COMPLETED FOR %s ===", self._attr_name)
 
     def _update_node_value(self, node_data):
