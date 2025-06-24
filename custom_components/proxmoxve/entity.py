@@ -51,9 +51,15 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
         host = self.coordinator.config_entry.data["host"]
         port = self.coordinator.config_entry.data.get("port", 8006)
 
+        # Get the appropriate name attribute based on resource type
+        if isinstance(resource, ProxmoxStorage):
+            resource_name = resource.storage
+        else:
+            resource_name = resource.name
+
         device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{self._resource_type}_{self._resource_id}")},
-            name=f"Proxmox VE {display_name} {resource.name}",
+            name=f"Proxmox VE {display_name} {resource_name}",
             manufacturer="Proxmox",
             model=display_name,
             configuration_url=f"https://{host}:{port}/",
