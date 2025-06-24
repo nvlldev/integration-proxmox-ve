@@ -358,19 +358,32 @@ class ProxmoxVEBackwardCompatibleSensor(CoordinatorEntity[ProxmoxVEDataUpdateCoo
             maxmem = float(node_data.get("maxmem", 1))
             return (mem / maxmem * 100) if maxmem > 0 else 0.0
         elif self._raw_attr_name.startswith("load_average_"):
-            # These would come from node_load_data in the old integration
-            # For now, return 0 as the new integration doesn't fetch this data yet
+            # Extract load averages from node data
+            load_avg = node_data.get("load_average", [0.0, 0.0, 0.0])
+            if self._raw_attr_name == "load_average_1min":
+                return load_avg[0] if len(load_avg) > 0 else 0.0
+            elif self._raw_attr_name == "load_average_5min":
+                return load_avg[1] if len(load_avg) > 1 else 0.0
+            elif self._raw_attr_name == "load_average_15min":
+                return load_avg[2] if len(load_avg) > 2 else 0.0
             return 0.0
         elif self._raw_attr_name == "cpu_frequency_mhz":
-            return 0
+            cpu_info = node_data.get("cpu_info", {})
+            return cpu_info.get("cpu_freq", 0)
         elif self._raw_attr_name == "cpu_cores":
-            return 0
+            cpu_info = node_data.get("cpu_info", {}).get("cpuinfo", {})
+            return cpu_info.get("cores", 0)
         elif self._raw_attr_name == "cpu_sockets":
-            return 0
+            cpu_info = node_data.get("cpu_info", {}).get("cpuinfo", {})
+            return cpu_info.get("sockets", 0)
         elif self._raw_attr_name == "cpu_total_logical":
-            return 0
+            cpu_info = node_data.get("cpu_info", {}).get("cpuinfo", {})
+            cores = cpu_info.get("cores", 0)
+            sockets = cpu_info.get("sockets", 1)
+            return cores * sockets if cores > 0 and sockets > 0 else 0
         elif self._raw_attr_name == "cpu_model":
-            return "Unknown"
+            cpu_info = node_data.get("cpu_info", {}).get("cpuinfo", {})
+            return cpu_info.get("model", "Unknown")
         return None
     
     def _get_vm_value(self, vm_data: dict[str, Any]) -> Any:

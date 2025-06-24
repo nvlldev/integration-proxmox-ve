@@ -80,18 +80,14 @@ class ProxmoxVEClient:
             "name": node_name,
             "vms": [],
             "containers": [],
+            "load_average": [0.0, 0.0, 0.0],
+            "cpu_info": {},
         }
         
-        # Quick connectivity test - if this fails, skip the node entirely
-        try:
-            # Try a quick API call first to test connectivity
-            self.api.nodes(node_name).status.get()
-        except Exception as e:
-            _LOGGER.warning("Node %s is unreachable, skipping: %s", node_name, e)
-            return node_data
+        _LOGGER.debug("Fetching data for node %s", node_name)
         
+        # Get VMs (QEMU) for this node
         try:
-            # Get VMs (QEMU) for this node
             vms = self.api.nodes(node_name).qemu.get()
             for vm in vms:
                 vm["node"] = node_name
@@ -101,8 +97,8 @@ class ProxmoxVEClient:
         except Exception as e:
             _LOGGER.warning("Failed to get VMs from node %s: %s", node_name, e)
         
+        # Get containers (LXC) for this node  
         try:
-            # Get containers (LXC) for this node
             containers = self.api.nodes(node_name).lxc.get()
             for container in containers:
                 container["node"] = node_name
@@ -111,6 +107,24 @@ class ProxmoxVEClient:
             _LOGGER.debug("Fetched %d containers from node %s", len(containers), node_name)
         except Exception as e:
             _LOGGER.warning("Failed to get containers from node %s: %s", node_name, e)
+        
+        # Get node status for load averages and CPU info
+        try:
+            status = self.api.nodes(node_name).status.get()
+            if status:
+                # Extract load averages if available
+                load_avg = status.get("loadavg", [0.0, 0.0, 0.0])
+                if isinstance(load_avg, list) and len(load_avg) >= 3:
+                    node_data["load_average"] = load_avg[:3]
+                
+                # Extract CPU info
+                node_data["cpu_info"] = {
+                    "cpuinfo": status.get("cpuinfo", {}),
+                    "cpu_freq": status.get("cpu_freq", 0),
+                }
+                _LOGGER.debug("Fetched status data for node %s", node_name)
+        except Exception as e:
+            _LOGGER.warning("Failed to get status from node %s: %s", node_name, e)
         
         return node_data
 
@@ -152,6 +166,7 @@ class ProxmoxVEClient:
             # Fetch data from all nodes sequentially to avoid threading issues
             all_vms = []
             all_containers = []
+            nodes_with_data = []
             
             for node in nodes:
                 node_name = node["node"]
@@ -159,12 +174,24 @@ class ProxmoxVEClient:
                     node_data = self._fetch_node_data(node_name)
                     all_vms.extend(node_data["vms"])
                     all_containers.extend(node_data["containers"])
+                    
+                    # Merge additional node data back into the node info
+                    enhanced_node = node.copy()
+                    enhanced_node["load_average"] = node_data["load_average"]
+                    enhanced_node["cpu_info"] = node_data["cpu_info"]
+                    nodes_with_data.append(enhanced_node)
+                    
                 except Exception as e:
                     _LOGGER.error("Failed to fetch data from node %s: %s", node_name, e)
+                    # Still add the node even if data fetch failed
+                    enhanced_node = node.copy()
+                    enhanced_node["load_average"] = [0.0, 0.0, 0.0]
+                    enhanced_node["cpu_info"] = {}
+                    nodes_with_data.append(enhanced_node)
             
             result = {
                 "cluster_status": cluster_status,
-                "nodes": nodes,
+                "nodes": nodes_with_data,
                 "vms": all_vms,
                 "containers": all_containers,
             }
