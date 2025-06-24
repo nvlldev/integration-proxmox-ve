@@ -1,8 +1,8 @@
 """Proxmox VE API client."""
 from __future__ import annotations
 
-import asyncio
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
@@ -107,7 +107,7 @@ class ProxmoxVEClient:
 
     def async_get_data(self) -> dict[str, Any]:
         """Get data from Proxmox VE API with optimized performance."""
-        start_time = asyncio.get_event_loop().time() if hasattr(asyncio, 'get_event_loop') else 0
+        start_time = time.time()
         
         try:
             _LOGGER.debug("Starting optimized data fetch from Proxmox VE at %s:%s", self.host, self.port)
@@ -177,18 +177,12 @@ class ProxmoxVEClient:
             }
             
             # Performance logging
-            if hasattr(asyncio, 'get_event_loop'):
-                end_time = asyncio.get_event_loop().time()
-                duration = end_time - start_time
-                _LOGGER.info(
-                    "Proxmox VE data fetch completed in %.2fs: %d nodes, %d VMs, %d containers", 
-                    duration, len(nodes), len(all_vms), len(all_containers)
-                )
-            else:
-                _LOGGER.info(
-                    "Successfully fetched Proxmox VE data: %d nodes, %d VMs, %d containers", 
-                    len(nodes), len(all_vms), len(all_containers)
-                )
+            end_time = time.time()
+            duration = end_time - start_time
+            _LOGGER.info(
+                "Proxmox VE data fetch completed in %.2fs: %d nodes, %d VMs, %d containers", 
+                duration, len(nodes), len(all_vms), len(all_containers)
+            )
             
             return result
             
