@@ -107,8 +107,7 @@ async def async_setup_entry(
                         for timeframe in ["hour", "day", "week"]:
                             try:
                                 load_data = await hass.async_add_executor_job(
-                                    client.proxmox.nodes(node["node"]).rrddata.get,
-                                    timeframe=timeframe
+                                    lambda tf=timeframe: client.proxmox.nodes(node["node"]).rrddata.get(timeframe=tf)
                                 )
                                 if load_data:
                                     _LOGGER.debug("Got RRD data with timeframe '%s' for node %s", timeframe, node["node"])
@@ -370,29 +369,56 @@ async def async_setup_entry(
         coordinator = existing_coordinator
     else:
         # Create new coordinator
+        update_interval_seconds = entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))
+        _LOGGER.debug("Creating new coordinator with update interval: %s seconds", update_interval_seconds)
+        
         coordinator = DataUpdateCoordinator(
             hass,
             _LOGGER,
             name="proxmox",
             update_method=async_update_data,
-            update_interval=timedelta(seconds=entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL))),
+            update_interval=timedelta(seconds=update_interval_seconds),
         )
         # Store coordinator in hass data
         hass.data[DOMAIN][coordinator_key] = coordinator
         _LOGGER.debug("Created new coordinator with interval: %s seconds", coordinator.update_interval.total_seconds())
+        _LOGGER.debug("Coordinator name: %s", coordinator.name)
+        _LOGGER.debug("Coordinator update method: %s", coordinator.update_method.__name__)
+        
+        # Verify coordinator configuration
+        if coordinator.update_interval.total_seconds() <= 0:
+            _LOGGER.warning("Coordinator update interval is invalid: %s seconds", coordinator.update_interval.total_seconds())
+        else:
+            _LOGGER.debug("Coordinator update interval is valid: %s seconds", coordinator.update_interval.total_seconds())
+        
+        # Ensure coordinator is properly configured
+        _LOGGER.debug("Coordinator configuration:")
+        _LOGGER.debug("  - Name: %s", coordinator.name)
+        _LOGGER.debug("  - Update interval: %s seconds", coordinator.update_interval.total_seconds())
+        _LOGGER.debug("  - Update method: %s", coordinator.update_method.__name__)
+        _LOGGER.debug("  - Has listeners: %s", hasattr(coordinator, '_listeners'))
+        if hasattr(coordinator, '_listeners'):
+            _LOGGER.debug("  - Listener count: %s", len(coordinator._listeners))
 
     # Wait for the first data fetch only if this is a new coordinator
     if not existing_coordinator:
         try:
             await coordinator.async_config_entry_first_refresh()
             _LOGGER.debug("Initial data fetch completed successfully")
+            _LOGGER.debug("Coordinator data after first refresh: %s", coordinator.data is not None)
+            if coordinator.data:
+                _LOGGER.debug("Coordinator data keys: %s", list(coordinator.data.keys()))
         except Exception as e:
             _LOGGER.error("Failed to fetch initial data: %s", e)
             # Still try to create entities with whatever data we have
+    else:
+        _LOGGER.debug("Using existing coordinator, skipping first refresh")
 
     # Create entities based on available data
     entities = []
     _LOGGER.debug("Coordinator data keys: %s", list(coordinator.data.keys()) if coordinator.data else "None")
+    _LOGGER.debug("Coordinator update interval: %s seconds", coordinator.update_interval.total_seconds())
+    _LOGGER.debug("Coordinator name: %s", coordinator.name)
     try:
         if coordinator.data and "nodes" in coordinator.data:
             _LOGGER.debug("Creating node attribute sensors")
@@ -499,9 +525,39 @@ async def async_setup_entry(
 
     if entities:
         _LOGGER.info("Creating %s Proxmox VE entities", len(entities))
+        _LOGGER.debug("Entity details:")
+        for i, entity in enumerate(entities[:5]):  # Log first 5 entities
+            _LOGGER.debug("  Entity %d: %s (ID: %s, Type: %s)", i+1, entity._attr_name, entity._device_id, entity._device_type)
+        if len(entities) > 5:
+            _LOGGER.debug("  ... and %d more entities", len(entities) - 5)
+        
         try:
             async_add_entities(entities)
             _LOGGER.info("Successfully added %s Proxmox VE entities", len(entities))
+            _LOGGER.debug("Coordinator listeners count: %s", len(coordinator._listeners) if hasattr(coordinator, '_listeners') else 'Unknown')
+            
+            # Test coordinator update to see if entities are notified
+            _LOGGER.debug("Testing coordinator update to verify entity notifications...")
+            try:
+                await coordinator.async_request_refresh()
+                _LOGGER.debug("Coordinator refresh test completed")
+                
+                # Check if entities were notified
+                if hasattr(coordinator, '_listeners'):
+                    _LOGGER.debug("Coordinator has %s listeners after refresh", len(coordinator._listeners))
+                else:
+                    _LOGGER.warning("Coordinator does not have _listeners attribute")
+                    
+                # Wait a moment and test again to see if entities are updated
+                import asyncio
+                await asyncio.sleep(1)
+                _LOGGER.debug("Testing second coordinator refresh...")
+                await coordinator.async_request_refresh()
+                _LOGGER.debug("Second coordinator refresh test completed")
+                
+            except Exception as e:
+                _LOGGER.error("Error testing coordinator refresh: %s", e)
+                
         except Exception as e:
             _LOGGER.error("Error adding entities: %s", e)
     else:
@@ -542,6 +598,7 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         self._device_name = device_name
 
         _LOGGER.debug("Sensor entity created: %s with initial value: %s", self._attr_name, self._attr_native_value)
+        _LOGGER.debug("Coordinator listeners count after entity creation: %s", len(coordinator._listeners) if hasattr(coordinator, '_listeners') else 'Unknown')
 
         # Set state_class, device_class, unit_of_measurement, and icon
         self._attr_state_class = None
@@ -588,6 +645,7 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         # Just return the cached value
+        _LOGGER.debug("Getting native_value for %s: %s", self._attr_name, self._attr_native_value)
         return self._attr_native_value
 
     async def async_handle_coordinator_update(self) -> None:
@@ -612,6 +670,9 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                     self._update_node_value(node)
                     _LOGGER.debug("[ASYNC] Updated node sensor %s: %s -> %s", self._attr_name, old_value, self._attr_native_value)
                     break
+            else:
+                _LOGGER.warning("No matching node found for device ID: %s", self._device_id)
+                _LOGGER.debug("Available nodes: %s", [n.get("node") for n in self.coordinator.data.get("nodes", [])])
         elif self._device_type == "VM":
             for vm in self.coordinator.data.get("vms", []):
                 if vm.get("vmid") == self._device_id:
@@ -620,6 +681,9 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                     self._update_vm_value(vm)
                     _LOGGER.debug("[ASYNC] Updated VM sensor %s: %s -> %s", self._attr_name, old_value, self._attr_native_value)
                     break
+            else:
+                _LOGGER.warning("No matching VM found for device ID: %s", self._device_id)
+                _LOGGER.debug("Available VMs: %s", [v.get("vmid") for v in self.coordinator.data.get("vms", [])])
         elif self._device_type == "Container":
             for container in self.coordinator.data.get("containers", []):
                 container_id = container.get("id") or container.get("vmid")
@@ -629,6 +693,9 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
                     self._update_container_value(container)
                     _LOGGER.debug("[ASYNC] Updated container sensor %s: %s -> %s", self._attr_name, old_value, self._attr_native_value)
                     break
+            else:
+                _LOGGER.warning("No matching container found for device ID: %s", self._device_id)
+                _LOGGER.debug("Available containers: %s", [(c.get("id") or c.get("vmid")) for c in self.coordinator.data.get("containers", [])])
 
         # Notify Home Assistant of the new state
         _LOGGER.debug("Calling super().async_handle_coordinator_update() for %s", self._attr_name)
@@ -723,3 +790,19 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         """Manually trigger a refresh for testing."""
         _LOGGER.debug("Manual refresh triggered for %s", self._attr_name)
         await self.async_handle_coordinator_update()
+
+    async def test_coordinator_update(self) -> None:
+        """Test method to manually trigger coordinator update."""
+        _LOGGER.debug("=== TESTING COORDINATOR UPDATE FOR %s ===", self._attr_name)
+        _LOGGER.debug("Current value: %s", self._attr_native_value)
+        _LOGGER.debug("Coordinator data available: %s", self.coordinator.data is not None)
+        
+        if self.coordinator.data:
+            _LOGGER.debug("Coordinator data keys: %s", list(self.coordinator.data.keys()))
+            _LOGGER.debug("Coordinator data sample: %s", self.coordinator.data.get("nodes", [])[:1])
+        
+        # Manually call the update method
+        await self.async_handle_coordinator_update()
+        
+        _LOGGER.debug("Updated value: %s", self._attr_native_value)
+        _LOGGER.debug("=== COORDINATOR UPDATE TEST COMPLETED ===")
