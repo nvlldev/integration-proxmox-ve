@@ -4,6 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntityDescription,
+)
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntityDescription,
@@ -19,6 +23,14 @@ class ProxmoxSensorEntityDescription(SensorEntityDescription):
     """Describes Proxmox sensor entity."""
 
     value_fn: Callable[[ProxmoxResource], float | int | str | None] | None = None
+    available_fn: Callable[[ProxmoxResource], bool] | None = None
+
+
+@dataclass
+class ProxmoxBinarySensorEntityDescription(BinarySensorEntityDescription):
+    """Describes Proxmox binary sensor entity."""
+
+    value_fn: Callable[[ProxmoxResource], bool | None] | None = None
     available_fn: Callable[[ProxmoxResource], bool] | None = None
 
 
@@ -237,15 +249,21 @@ STORAGE_SENSORS: tuple[ProxmoxSensorEntityDescription, ...] = (
         icon="mdi:database-settings",
         value_fn=lambda storage: storage.content,
     ),
-    ProxmoxSensorEntityDescription(
+)
+
+# Storage binary sensor descriptions
+STORAGE_BINARY_SENSORS: tuple[ProxmoxBinarySensorEntityDescription, ...] = (
+    ProxmoxBinarySensorEntityDescription(
         key="storage_enabled",
         name="Storage Enabled",
+        device_class=BinarySensorDeviceClass.RUNNING,
         icon="mdi:database-check",
         value_fn=lambda storage: storage.enabled,
     ),
-    ProxmoxSensorEntityDescription(
+    ProxmoxBinarySensorEntityDescription(
         key="storage_shared",
         name="Storage Shared",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
         icon="mdi:database-sync",
         value_fn=lambda storage: storage.shared,
     ),

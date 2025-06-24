@@ -29,7 +29,7 @@ DATA_COORDINATOR = "coordinator"
 DATA_CLIENT = "client"
 
 # Platforms
-PLATFORMS = ["sensor", "button"]
+PLATFORMS = ["binary_sensor", "sensor", "button"]
 
 # Update interval
 UPDATE_INTERVAL = timedelta(seconds=DEFAULT_UPDATE_INTERVAL)
