@@ -337,7 +337,10 @@ async def async_setup_entry(
             for node_name, load_info in node_load_data.items():
                 _LOGGER.debug("  Node %s load data: %s", node_name, load_info)
             
-            return {"nodes": nodes, "vms": all_vms, "containers": all_containers, "node_load_data": node_load_data}
+            result_data = {"nodes": nodes, "vms": all_vms, "containers": all_containers, "node_load_data": node_load_data}
+            _LOGGER.debug("Coordinator update completed successfully with %s nodes, %s VMs, %s containers", 
+                         len(nodes), len(all_vms), len(all_containers))
+            return result_data
         except AuthenticationError as error:
             _LOGGER.error("Authentication error fetching Proxmox VE data: %s", error)
             _LOGGER.error("Please check your username and password/token credentials")
@@ -526,6 +529,11 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         self._attr_native_value = attr_value
         self._attr_device_info = device_info
         self._raw_attr_name = attr_name
+        self._entry_id = entry_id
+        self._host = host
+        self._device_type = device_type
+        self._device_id = device_id
+        self._device_name = device_name
 
         # Set state_class, device_class, unit_of_measurement, and icon
         self._attr_state_class = None
@@ -563,6 +571,122 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
             self._attr_icon = "mdi:chip"
         elif attr_name in ("cpu_cores", "cpu_sockets", "cpu_total_logical"):
             self._attr_icon = "mdi:chip"
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if not self.coordinator.data:
+            _LOGGER.debug("No coordinator data available for sensor %s", self._attr_name)
+            return
+
+        _LOGGER.debug("Updating sensor %s with new coordinator data", self._attr_name)
+
+        # Find the relevant data based on device type
+        if self._device_type == "Node":
+            # Find the node data
+            for node in self.coordinator.data.get("nodes", []):
+                if node.get("node") == self._device_id:
+                    self._update_node_value(node)
+                    _LOGGER.debug("Updated node sensor %s with value: %s", self._attr_name, self._attr_native_value)
+                    break
+        elif self._device_type == "VM":
+            # Find the VM data
+            for vm in self.coordinator.data.get("vms", []):
+                if vm.get("vmid") == self._device_id:
+                    self._update_vm_value(vm)
+                    _LOGGER.debug("Updated VM sensor %s with value: %s", self._attr_name, self._attr_native_value)
+                    break
+        elif self._device_type == "Container":
+            # Find the container data
+            for container in self.coordinator.data.get("containers", []):
+                container_id = container.get("id") or container.get("vmid")
+                if container_id == self._device_id:
+                    self._update_container_value(container)
+                    _LOGGER.debug("Updated container sensor %s with value: %s", self._attr_name, self._attr_native_value)
+                    break
+
+    def _update_node_value(self, node_data):
+        """Update sensor value from node data."""
+        if self._raw_attr_name == "cpu_usage_percent":
+            self._attr_native_value = float(node_data.get("cpu", 0)) * 100
+        elif self._raw_attr_name == "memory_used_bytes":
+            self._attr_native_value = node_data.get("mem", 0)
+        elif self._raw_attr_name == "memory_total_bytes":
+            self._attr_native_value = node_data.get("maxmem", 0)
+        elif self._raw_attr_name == "disk_used_bytes":
+            self._attr_native_value = node_data.get("disk", 0)
+        elif self._raw_attr_name == "disk_total_bytes":
+            self._attr_native_value = node_data.get("maxdisk", 0)
+        elif self._raw_attr_name == "uptime_seconds":
+            self._attr_native_value = node_data.get("uptime", 0)
+        elif self._raw_attr_name == "memory_usage_percent":
+            mem = float(node_data.get("mem", 0))
+            maxmem = float(node_data.get("maxmem", 1))
+            self._attr_native_value = (mem / maxmem * 100) if maxmem > 0 else 0.0
+        elif self._raw_attr_name.startswith("load_average_"):
+            node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
+            if self._raw_attr_name == "load_average_1min":
+                self._attr_native_value = float(node_load_data.get("loadavg_1min", 0))
+            elif self._raw_attr_name == "load_average_5min":
+                self._attr_native_value = float(node_load_data.get("loadavg_5min", 0))
+            elif self._raw_attr_name == "load_average_15min":
+                self._attr_native_value = float(node_load_data.get("loadavg_15min", 0))
+        elif self._raw_attr_name == "cpu_frequency_mhz":
+            node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
+            self._attr_native_value = int(node_load_data.get("cpu_frequency", 0))
+        elif self._raw_attr_name == "cpu_cores":
+            node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
+            self._attr_native_value = int(node_load_data.get("cpu_cores", 0))
+        elif self._raw_attr_name == "cpu_sockets":
+            node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
+            self._attr_native_value = int(node_load_data.get("cpu_sockets", 0))
+        elif self._raw_attr_name == "cpu_total_logical":
+            node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
+            self._attr_native_value = int(node_load_data.get("cpu_total", 0))
+        elif self._raw_attr_name == "cpu_model":
+            node_load_data = self.coordinator.data.get("node_load_data", {}).get(self._device_id, {})
+            self._attr_native_value = node_load_data.get("cpu_model", "Unknown")
+
+    def _update_vm_value(self, vm_data):
+        """Update sensor value from VM data."""
+        if self._raw_attr_name == "cpu_usage_percent":
+            self._attr_native_value = float(vm_data.get("cpu", 0)) * 100
+        elif self._raw_attr_name == "memory_used_bytes":
+            self._attr_native_value = vm_data.get("mem", 0)
+        elif self._raw_attr_name == "memory_total_bytes":
+            self._attr_native_value = vm_data.get("maxmem", 0)
+        elif self._raw_attr_name == "disk_used_bytes":
+            self._attr_native_value = vm_data.get("disk", 0)
+        elif self._raw_attr_name == "disk_total_bytes":
+            self._attr_native_value = vm_data.get("maxdisk", 0)
+        elif self._raw_attr_name == "uptime_seconds":
+            self._attr_native_value = vm_data.get("uptime", 0)
+        elif self._raw_attr_name == "node_name":
+            self._attr_native_value = vm_data.get("node", "unknown")
+        elif self._raw_attr_name == "memory_usage_percent":
+            mem = float(vm_data.get("mem", 0))
+            maxmem = float(vm_data.get("maxmem", 1))
+            self._attr_native_value = (mem / maxmem * 100) if maxmem > 0 else 0.0
+
+    def _update_container_value(self, container_data):
+        """Update sensor value from container data."""
+        if self._raw_attr_name == "cpu_usage_percent":
+            self._attr_native_value = float(container_data.get("cpu", 0)) * 100
+        elif self._raw_attr_name == "memory_used_bytes":
+            self._attr_native_value = container_data.get("mem", 0)
+        elif self._raw_attr_name == "memory_total_bytes":
+            self._attr_native_value = container_data.get("maxmem", 0)
+        elif self._raw_attr_name == "disk_used_bytes":
+            self._attr_native_value = container_data.get("disk", 0)
+        elif self._raw_attr_name == "disk_total_bytes":
+            self._attr_native_value = container_data.get("maxdisk", 0)
+        elif self._raw_attr_name == "uptime_seconds":
+            self._attr_native_value = container_data.get("uptime", 0)
+        elif self._raw_attr_name == "node_name":
+            self._attr_native_value = container_data.get("node", "unknown")
+        elif self._raw_attr_name == "memory_usage_percent":
+            mem = float(container_data.get("mem", 0))
+            maxmem = float(container_data.get("maxmem", 1))
+            self._attr_native_value = (mem / maxmem * 100) if maxmem > 0 else 0.0
 
     @property
     def native_value(self):
