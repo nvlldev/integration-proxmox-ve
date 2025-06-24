@@ -1,81 +1,116 @@
-"""Proxmox API."""
+"""Proxmox VE API client."""
 from __future__ import annotations
 
 import logging
+from typing import Any
 
 from proxmoxer import ProxmoxAPI
-from requests.exceptions import ConnectionError
-from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_USERNAME
+from proxmoxer.core import AuthenticationError
+import requests
+
+from homeassistant.const import CONF_HOST, CONF_PASSWORD, CONF_PORT, CONF_USERNAME
+
+from .const import CONF_TOKEN_NAME, CONF_TOKEN_VALUE, CONF_VERIFY_SSL
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class ProxmoxClient:
-    """Proxmox client."""
+class ProxmoxVEClient:
+    """Proxmox VE API client."""
 
-    def __init__(
-        self,
-        host,
-        username,
-        password=None,
-        token_name=None,
-        token_value=None,
-        verify_ssl=True,
-    ):
-        """Initialize the Proxmox client."""
-        self.host = host
-        self.username = username
-        self.password = password
-        self.token_name = token_name
-        self.token_value = token_value
-        self.verify_ssl = verify_ssl
-        self.proxmox = None
+    def __init__(self, config: dict[str, Any]) -> None:
+        """Initialize the Proxmox VE client."""
+        self.host = config[CONF_HOST]
+        self.port = config[CONF_PORT]
+        self.username = config[CONF_USERNAME]
+        self.verify_ssl = config[CONF_VERIFY_SSL]
+        
+        # Determine authentication method
+        if config.get(CONF_PASSWORD):
+            self.auth_method = "password"
+            self.password = config[CONF_PASSWORD]
+            self.token_name = None
+            self.token_value = None
+        else:
+            self.auth_method = "token"
+            self.password = None
+            self.token_name = config[CONF_TOKEN_NAME]
+            self.token_value = config[CONF_TOKEN_VALUE]
+        
+        self._api = None
 
-    def authenticate(self) -> ProxmoxAPI:
-        """Authenticate with Proxmox."""
-        try:
-            _LOGGER.debug("Attempting to authenticate with Proxmox at %s using user: %s", self.host, self.username)
-            
-            if self.password:
-                _LOGGER.debug("Using password authentication")
-                self.proxmox = ProxmoxAPI(
-                    self.host,
+    @property
+    def api(self) -> ProxmoxAPI:
+        """Get the Proxmox API instance."""
+        if self._api is None:
+            if self.auth_method == "password":
+                self._api = ProxmoxAPI(
+                    host=self.host,
+                    port=self.port,
                     user=self.username,
                     password=self.password,
                     verify_ssl=self.verify_ssl,
                 )
             else:
-                _LOGGER.debug("Using token authentication with token: %s", self.token_name)
-                # For token authentication, we need to construct the token properly
-                # The format should be: username@realm!token_name
-                if '@' in self.username:
-                    # Username already has realm, use as is
-                    token_id = f"{self.username}!{self.token_name}"
-                else:
-                    # Username doesn't have realm, assume @pam
-                    token_id = f"{self.username}@pam!{self.token_name}"
-                
-                _LOGGER.debug("Constructed token ID: %s", token_id)
-                
-                # For token authentication, we need to pass the token_id as the user parameter
-                # and the token_value as the password parameter
-                self.proxmox = ProxmoxAPI(
-                    self.host,
-                    user=token_id,
-                    password=self.token_value,
+                self._api = ProxmoxAPI(
+                    host=self.host,
+                    port=self.port,
+                    user=self.username,
+                    token_name=self.token_name,
+                    token_value=self.token_value,
                     verify_ssl=self.verify_ssl,
                 )
-            
-            _LOGGER.debug("ProxmoxAPI object created successfully")
-            
-        except ConnectionError as error:
-            _LOGGER.error("Failed to connect to Proxmox: %s", error)
-            raise
-        except Exception as error:
-            _LOGGER.error("Unexpected error during authentication: %s", error)
-            _LOGGER.error("Host: %s, Username: %s, Verify SSL: %s", self.host, self.username, self.verify_ssl)
-            if self.token_name:
-                _LOGGER.error("Token name: %s", self.token_name)
-            raise
+        return self._api
 
-        return self.proxmox 
+    def async_get_data(self) -> dict[str, Any]:
+        """Get data from Proxmox VE API."""
+        try:
+            # Get cluster information
+            cluster_status = self.api.cluster.status.get()
+            
+            # Get all nodes
+            nodes = self.api.nodes.get()
+            
+            # Get VMs and containers from all nodes
+            all_vms = []
+            all_containers = []
+            
+            for node in nodes:
+                node_name = node["node"]
+                
+                try:
+                    # Get VMs (QEMU)
+                    vms = self.api.nodes(node_name).qemu.get()
+                    for vm in vms:
+                        vm["node"] = node_name
+                        vm["type"] = "qemu"
+                    all_vms.extend(vms)
+                except Exception as e:
+                    _LOGGER.warning("Failed to get VMs from node %s: %s", node_name, e)
+                
+                try:
+                    # Get containers (LXC)
+                    containers = self.api.nodes(node_name).lxc.get()
+                    for container in containers:
+                        container["node"] = node_name
+                        container["type"] = "lxc"
+                    all_containers.extend(containers)
+                except Exception as e:
+                    _LOGGER.warning("Failed to get containers from node %s: %s", node_name, e)
+            
+            return {
+                "cluster_status": cluster_status,
+                "nodes": nodes,
+                "vms": all_vms,
+                "containers": all_containers,
+            }
+            
+        except AuthenticationError as e:
+            _LOGGER.error("Authentication failed: %s", e)
+            raise
+        except requests.exceptions.ConnectionError as e:
+            _LOGGER.error("Connection failed: %s", e)
+            raise
+        except Exception as e:
+            _LOGGER.error("Unexpected error: %s", e)
+            raise
