@@ -37,29 +37,30 @@ class InvalidAuth(Exception):
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_HOST): str,
-        vol.Optional(CONF_PORT, default=DEFAULT_PORT): int,
-        vol.Required("auth_method", default="password"): vol.In(["password", "token"]),
-        vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL): bool,
+        vol.Required(CONF_HOST, description="Host"): str,
+        vol.Optional(CONF_PORT, default=DEFAULT_PORT, description="Port"): int,
+        vol.Required("auth_method", default="password", description="Authentication Method"): vol.In(["password", "token"]),
+        vol.Optional(CONF_VERIFY_SSL, default=DEFAULT_VERIFY_SSL, description="Verify SSL"): bool,
         vol.Optional(
             CONF_UPDATE_INTERVAL,
-            default=DEFAULT_UPDATE_INTERVAL
+            default=DEFAULT_UPDATE_INTERVAL,
+            description="Update Interval (seconds)"
         ): vol.All(vol.Coerce(int), vol.Range(min=MIN_UPDATE_INTERVAL, max=MAX_UPDATE_INTERVAL)),
     }
 )
 
 STEP_PASSWORD_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_USERNAME): str,
-        vol.Required(CONF_PASSWORD): str,
+        vol.Required(CONF_USERNAME, description="Username"): str,
+        vol.Required(CONF_PASSWORD, description="Password"): str,
     }
 )
 
 STEP_TOKEN_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_USERNAME): str,
-        vol.Required(CONF_TOKEN_NAME): str,
-        vol.Required(CONF_TOKEN_VALUE): str,
+        vol.Required(CONF_USERNAME, description="Username"): str,
+        vol.Required(CONF_TOKEN_NAME, description="Token Name"): str,
+        vol.Required(CONF_TOKEN_VALUE, description="Token Value"): str,
     }
 )
 

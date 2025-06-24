@@ -12,7 +12,11 @@
           "update_interval": "Update Interval (seconds)"
         },
         "data_description": {
-          "auth_method": "Choose between password or API token authentication"
+          "host": "IP address or hostname of your Proxmox VE server",
+          "port": "Port number (default: 8006)",
+          "auth_method": "Choose between password or API token authentication",
+          "verify_ssl": "Verify SSL certificate (recommended)",
+          "update_interval": "How often to update entity values in seconds"
         }
       },
       "password": {

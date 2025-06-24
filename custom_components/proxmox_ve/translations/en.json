@@ -2,17 +2,46 @@
   "config": {
     "step": {
       "user": {
-        "title": "Proxmox VE",
-        "description": "Set up your Proxmox VE connection",
+        "title": "Proxmox VE - Server Configuration",
+        "description": "Configure your Proxmox VE server connection",
         "data": {
           "host": "Host",
           "port": "Port",
-          "username": "Username",
-          "password": "Password",
-          "token_name": "Token Name",
-          "token_value": "Token Value",
+          "auth_method": "Authentication Method",
           "verify_ssl": "Verify SSL",
           "update_interval": "Update Interval (seconds)"
+        },
+        "data_description": {
+          "host": "IP address or hostname of your Proxmox VE server",
+          "port": "Port number (default: 8006)",
+          "auth_method": "Choose between password or API token authentication",
+          "verify_ssl": "Verify SSL certificate (recommended)",
+          "update_interval": "How often to update entity values in seconds"
+        }
+      },
+      "password": {
+        "title": "Proxmox VE - Password Authentication",
+        "description": "Enter your Proxmox VE username and password",
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        },
+        "data_description": {
+          "username": "Username should be in format 'username@realm' (e.g., 'root@pam')"
+        }
+      },
+      "token": {
+        "title": "Proxmox VE - Token Authentication",
+        "description": "Enter your Proxmox VE API token credentials",
+        "data": {
+          "username": "Username",
+          "token_name": "Token Name",
+          "token_value": "Token Value"
+        },
+        "data_description": {
+          "username": "Username should be in format 'username@realm' (e.g., 'root@pam')",
+          "token_name": "The name of your API token",
+          "token_value": "The secret value of your API token"
         }
       }
     },
