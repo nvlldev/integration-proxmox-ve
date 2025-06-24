@@ -26,6 +26,15 @@ from .coordinator import ProxmoxVEDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+
+class CannotConnect(Exception):
+    """Error to indicate we cannot connect."""
+
+
+class InvalidAuth(Exception):
+    """Error to indicate there is invalid auth."""
+
+
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_HOST): str,
@@ -45,15 +54,29 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
-    coordinator = ProxmoxVEDataUpdateCoordinator(hass, data)
-    await coordinator.async_config_entry_first_refresh()
+    from proxmoxer.core import AuthenticationError
+    from requests.exceptions import ConnectionError, Timeout
     
-    # If we get here, the connection was successful
-    info = {
-        "title": f"Proxmox VE {data[CONF_HOST]}",
-        "unique_id": f"proxmox_ve_{data[CONF_HOST]}_{data[CONF_USERNAME]}",
-    }
-    return info
+    try:
+        coordinator = ProxmoxVEDataUpdateCoordinator(hass, data)
+        await coordinator.async_config_entry_first_refresh()
+        
+        # If we get here, the connection was successful
+        info = {
+            "title": f"Proxmox VE {data[CONF_HOST]}",
+            "unique_id": f"proxmox_ve_{data[CONF_HOST]}_{data[CONF_USERNAME]}",
+        }
+        return info
+        
+    except AuthenticationError as err:
+        _LOGGER.error("Authentication failed: %s", err)
+        raise InvalidAuth from err
+    except (ConnectionError, Timeout) as err:
+        _LOGGER.error("Cannot connect: %s", err)
+        raise CannotConnect from err
+    except Exception as err:
+        _LOGGER.error("Unexpected error: %s", err)
+        raise CannotConnect from err
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -85,6 +108,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not errors:
             try:
                 info = await validate_input(self.hass, user_input)
+            except CannotConnect:
+                errors["base"] = "cannot_connect"
+            except InvalidAuth:
+                errors["base"] = "invalid_auth"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"

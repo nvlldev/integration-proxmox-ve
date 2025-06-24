@@ -43,33 +43,53 @@ class ProxmoxVEClient:
     def api(self) -> ProxmoxAPI:
         """Get the Proxmox API instance."""
         if self._api is None:
-            if self.auth_method == "password":
-                self._api = ProxmoxAPI(
-                    host=self.host,
-                    port=self.port,
-                    user=self.username,
-                    password=self.password,
-                    verify_ssl=self.verify_ssl,
-                )
-            else:
-                self._api = ProxmoxAPI(
-                    host=self.host,
-                    port=self.port,
-                    user=self.username,
-                    token_name=self.token_name,
-                    token_value=self.token_value,
-                    verify_ssl=self.verify_ssl,
-                )
+            try:
+                if self.auth_method == "password":
+                    self._api = ProxmoxAPI(
+                        host=self.host,
+                        port=self.port,
+                        user=self.username,
+                        password=self.password,
+                        verify_ssl=self.verify_ssl,
+                        backend='https',
+                    )
+                else:
+                    self._api = ProxmoxAPI(
+                        host=self.host,
+                        port=self.port,
+                        user=self.username,
+                        token_name=self.token_name,
+                        token_value=self.token_value,
+                        verify_ssl=self.verify_ssl,
+                        backend='https',
+                    )
+            except AuthenticationError as e:
+                _LOGGER.error("Authentication failed for user %s@%s: %s", self.username, self.host, e)
+                raise
+            except Exception as e:
+                _LOGGER.error("Failed to create Proxmox API client: %s", e)
+                raise
         return self._api
 
     def async_get_data(self) -> dict[str, Any]:
         """Get data from Proxmox VE API."""
         try:
-            # Get cluster information
-            cluster_status = self.api.cluster.status.get()
+            _LOGGER.debug("Fetching data from Proxmox VE at %s:%s", self.host, self.port)
+            
+            # Test authentication first by getting cluster status
+            try:
+                cluster_status = self.api.cluster.status.get()
+                _LOGGER.debug("Successfully authenticated and got cluster status")
+            except Exception as e:
+                _LOGGER.error("Failed to get cluster status (authentication test): %s", e)
+                # Try to get version info as fallback authentication test
+                version = self.api.version.get()
+                _LOGGER.debug("Authentication successful via version check: %s", version)
+                cluster_status = []
             
             # Get all nodes
             nodes = self.api.nodes.get()
+            _LOGGER.debug("Found %d nodes", len(nodes))
             
             # Get VMs and containers from all nodes
             all_vms = []
@@ -77,6 +97,7 @@ class ProxmoxVEClient:
             
             for node in nodes:
                 node_name = node["node"]
+                _LOGGER.debug("Processing node: %s", node_name)
                 
                 try:
                     # Get VMs (QEMU)
@@ -85,6 +106,7 @@ class ProxmoxVEClient:
                         vm["node"] = node_name
                         vm["type"] = "qemu"
                     all_vms.extend(vms)
+                    _LOGGER.debug("Found %d VMs on node %s", len(vms), node_name)
                 except Exception as e:
                     _LOGGER.warning("Failed to get VMs from node %s: %s", node_name, e)
                 
@@ -95,22 +117,30 @@ class ProxmoxVEClient:
                         container["node"] = node_name
                         container["type"] = "lxc"
                     all_containers.extend(containers)
+                    _LOGGER.debug("Found %d containers on node %s", len(containers), node_name)
                 except Exception as e:
                     _LOGGER.warning("Failed to get containers from node %s: %s", node_name, e)
             
-            return {
+            result = {
                 "cluster_status": cluster_status,
                 "nodes": nodes,
                 "vms": all_vms,
                 "containers": all_containers,
             }
             
+            _LOGGER.info("Successfully fetched Proxmox VE data: %d nodes, %d VMs, %d containers", 
+                        len(nodes), len(all_vms), len(all_containers))
+            return result
+            
         except AuthenticationError as e:
-            _LOGGER.error("Authentication failed: %s", e)
+            _LOGGER.error("Authentication failed for %s@%s:%s - %s", self.username, self.host, self.port, e)
             raise
         except requests.exceptions.ConnectionError as e:
-            _LOGGER.error("Connection failed: %s", e)
+            _LOGGER.error("Connection failed to %s:%s - %s", self.host, self.port, e)
+            raise
+        except requests.exceptions.Timeout as e:
+            _LOGGER.error("Request timeout to %s:%s - %s", self.host, self.port, e)
             raise
         except Exception as e:
-            _LOGGER.error("Unexpected error: %s", e)
+            _LOGGER.error("Unexpected error while fetching data from %s:%s - %s", self.host, self.port, e)
             raise

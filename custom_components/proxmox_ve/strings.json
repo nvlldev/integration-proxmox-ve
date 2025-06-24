@@ -19,9 +19,9 @@
     "error": {
       "auth_method_conflict": "Please use either password or token authentication, not both",
       "auth_method_missing": "Please provide either password or token authentication",
-      "cannot_connect": "Failed to connect to Proxmox VE",
-      "invalid_auth": "Invalid authentication",
-      "unknown": "Unexpected error occurred"
+      "cannot_connect": "Failed to connect to Proxmox VE server. Please check the host, port, and network connectivity.",
+      "invalid_auth": "Authentication failed. Please check your username and password/token credentials. Username should be in format 'username@realm' (e.g., 'root@pam').",
+      "unknown": "Unexpected error occurred while setting up the integration"
     },
     "abort": {
       "already_configured": "Device is already configured"
