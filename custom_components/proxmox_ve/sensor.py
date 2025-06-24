@@ -571,8 +571,13 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
         elif attr_name in ("cpu_cores", "cpu_sockets", "cpu_total_logical"):
             self._attr_icon = "mdi:chip"
 
+    @property
+    def native_value(self):
+        # Always update from coordinator data before returning
+        self._handle_coordinator_update()
+        return self._attr_native_value
+
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
         if not self.coordinator.data:
             _LOGGER.debug("No coordinator data available for sensor %s", self._attr_name)
             return
@@ -581,27 +586,26 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
 
         # Find the relevant data based on device type
         if self._device_type == "Node":
-            # Find the node data
             for node in self.coordinator.data.get("nodes", []):
                 if node.get("node") == self._device_id:
                     self._update_node_value(node)
                     _LOGGER.debug("Updated node sensor %s with value: %s", self._attr_name, self._attr_native_value)
                     break
         elif self._device_type == "VM":
-            # Find the VM data
             for vm in self.coordinator.data.get("vms", []):
                 if vm.get("vmid") == self._device_id:
                     self._update_vm_value(vm)
                     _LOGGER.debug("Updated VM sensor %s with value: %s", self._attr_name, self._attr_native_value)
                     break
         elif self._device_type == "Container":
-            # Find the container data
             for container in self.coordinator.data.get("containers", []):
                 container_id = container.get("id") or container.get("vmid")
                 if container_id == self._device_id:
                     self._update_container_value(container)
                     _LOGGER.debug("Updated container sensor %s with value: %s", self._attr_name, self._attr_native_value)
                     break
+        # Notify Home Assistant of the new state
+        self.async_write_ha_state()
 
     def _update_node_value(self, node_data):
         """Update sensor value from node data."""
@@ -686,7 +690,3 @@ class ProxmoxBaseAttributeSensor(CoordinatorEntity, SensorEntity):
             mem = float(container_data.get("mem", 0))
             maxmem = float(container_data.get("maxmem", 1))
             self._attr_native_value = (mem / maxmem * 100) if maxmem > 0 else 0.0
-
-    @property
-    def native_value(self):
-        return self._attr_native_value
