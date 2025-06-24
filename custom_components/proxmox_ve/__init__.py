@@ -16,13 +16,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Proxmox VE from a config entry."""
     _LOGGER.debug("Setting up Proxmox VE integration")
     
-    # Combine data and options for configuration
-    config = {**entry.data, **entry.options}
-    
     coordinator = ProxmoxVEDataUpdateCoordinator(
         hass=hass,
-        config=config,
-        entry=entry,
+        config_entry=entry,
     )
     
     # Fetch initial data
@@ -47,6 +43,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
     _LOGGER.debug("Unloading Proxmox VE integration")
+    
+    # Shutdown coordinator resources
+    coordinator = hass.data[DOMAIN][entry.entry_id].get(DATA_COORDINATOR)
+    if coordinator:
+        await coordinator.async_shutdown()
     
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     
