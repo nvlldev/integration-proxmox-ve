@@ -25,24 +25,50 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 async def async_restart_coordinator(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Restart the coordinator with updated configuration."""
+    _LOGGER.info("Starting coordinator restart for entry: %s", entry.entry_id)
+    
     # Get the coordinator key
     coordinator_key = f"{entry.entry_id}_coordinator"
     
     # Check if coordinator exists
     if coordinator_key in hass.data[DOMAIN]:
-        coordinator = hass.data[DOMAIN][coordinator_key]
+        old_coordinator = hass.data[DOMAIN][coordinator_key]
+        _LOGGER.debug("Found existing coordinator with interval: %s seconds", old_coordinator.update_interval.total_seconds())
         
-        # Update the coordinator's update interval
-        from datetime import timedelta
-        from .const import DEFAULT_UPDATE_INTERVAL
+        # Stop the old coordinator
+        if hasattr(old_coordinator, 'async_shutdown'):
+            await old_coordinator.async_shutdown()
+            _LOGGER.debug("Successfully stopped old coordinator")
+        else:
+            _LOGGER.debug("Old coordinator does not have async_shutdown method")
         
-        new_interval = timedelta(seconds=entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
-        coordinator.update_interval = new_interval
-        
-        # Trigger an immediate update
-        await coordinator.async_request_refresh()
-        
-        _LOGGER.debug("Updated coordinator with new interval: %s seconds", new_interval.total_seconds())
+        # Remove the old coordinator from hass data
+        hass.data[DOMAIN].pop(coordinator_key)
+        _LOGGER.debug("Removed old coordinator from hass data")
+    else:
+        _LOGGER.debug("No existing coordinator found")
+    
+    # Get the new interval
+    from datetime import timedelta
+    from .const import DEFAULT_UPDATE_INTERVAL
+    
+    new_interval = timedelta(seconds=entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
+    _LOGGER.info("New update interval will be: %s seconds", new_interval.total_seconds())
+    
+    # Reload the sensor platform to create a new coordinator
+    _LOGGER.debug("Unloading sensor platform...")
+    await hass.config_entries.async_unload_platforms(entry, [Platform.SENSOR])
+    _LOGGER.debug("Reloading sensor platform...")
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SENSOR])
+    
+    # Verify the new coordinator was created
+    if coordinator_key in hass.data[DOMAIN]:
+        new_coordinator = hass.data[DOMAIN][coordinator_key]
+        _LOGGER.info("Successfully created new coordinator with interval: %s seconds", new_coordinator.update_interval.total_seconds())
+    else:
+        _LOGGER.error("Failed to create new coordinator")
+    
+    _LOGGER.info("Coordinator restart completed")
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

@@ -360,10 +360,8 @@ async def async_setup_entry(
     existing_coordinator = hass.data[DOMAIN].get(coordinator_key)
     
     if existing_coordinator:
-        # Update the existing coordinator's update interval
-        new_interval = timedelta(seconds=entry.options.get(CONF_UPDATE_INTERVAL, entry.data.get(CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL)))
-        existing_coordinator.update_interval = new_interval
-        _LOGGER.debug("Updated existing coordinator with new interval: %s seconds", new_interval.total_seconds())
+        # If coordinator exists, use it (this happens during initial setup)
+        _LOGGER.debug("Using existing coordinator with interval: %s seconds", existing_coordinator.update_interval.total_seconds())
         coordinator = existing_coordinator
     else:
         # Create new coordinator
@@ -376,6 +374,7 @@ async def async_setup_entry(
         )
         # Store coordinator in hass data
         hass.data[DOMAIN][coordinator_key] = coordinator
+        _LOGGER.debug("Created new coordinator with interval: %s seconds", coordinator.update_interval.total_seconds())
 
     # Wait for the first data fetch only if this is a new coordinator
     if not existing_coordinator:
