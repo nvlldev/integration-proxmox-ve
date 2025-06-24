@@ -286,6 +286,60 @@ class ProxmoxVEAPIClient:
             _LOGGER.error("Failed to fetch data from Proxmox VE API: %s", err)
             raise
 
+    # VM Control Methods
+    async def async_vm_start(self, node: str, vmid: int) -> dict[str, Any]:
+        """Start a VM."""
+        return await self.async_request("POST", f"/nodes/{node}/qemu/{vmid}/status/start")
+
+    async def async_vm_stop(self, node: str, vmid: int) -> dict[str, Any]:
+        """Stop a VM."""
+        return await self.async_request("POST", f"/nodes/{node}/qemu/{vmid}/status/stop")
+
+    async def async_vm_shutdown(self, node: str, vmid: int) -> dict[str, Any]:
+        """Shutdown a VM gracefully."""
+        return await self.async_request("POST", f"/nodes/{node}/qemu/{vmid}/status/shutdown")
+
+    async def async_vm_reboot(self, node: str, vmid: int) -> dict[str, Any]:
+        """Reboot a VM."""
+        return await self.async_request("POST", f"/nodes/{node}/qemu/{vmid}/status/reboot")
+
+    async def async_vm_reset(self, node: str, vmid: int) -> dict[str, Any]:
+        """Reset a VM (hard reset)."""
+        return await self.async_request("POST", f"/nodes/{node}/qemu/{vmid}/status/reset")
+
+    async def async_vm_suspend(self, node: str, vmid: int) -> dict[str, Any]:
+        """Suspend a VM."""
+        return await self.async_request("POST", f"/nodes/{node}/qemu/{vmid}/status/suspend")
+
+    async def async_vm_resume(self, node: str, vmid: int) -> dict[str, Any]:
+        """Resume a suspended VM."""
+        return await self.async_request("POST", f"/nodes/{node}/qemu/{vmid}/status/resume")
+
+    # Container Control Methods
+    async def async_container_start(self, node: str, vmid: int) -> dict[str, Any]:
+        """Start a container."""
+        return await self.async_request("POST", f"/nodes/{node}/lxc/{vmid}/status/start")
+
+    async def async_container_stop(self, node: str, vmid: int) -> dict[str, Any]:
+        """Stop a container."""
+        return await self.async_request("POST", f"/nodes/{node}/lxc/{vmid}/status/stop")
+
+    async def async_container_shutdown(self, node: str, vmid: int) -> dict[str, Any]:
+        """Shutdown a container gracefully."""
+        return await self.async_request("POST", f"/nodes/{node}/lxc/{vmid}/status/shutdown")
+
+    async def async_container_reboot(self, node: str, vmid: int) -> dict[str, Any]:
+        """Reboot a container."""
+        return await self.async_request("POST", f"/nodes/{node}/lxc/{vmid}/status/reboot")
+
+    async def async_container_suspend(self, node: str, vmid: int) -> dict[str, Any]:
+        """Suspend a container."""
+        return await self.async_request("POST", f"/nodes/{node}/lxc/{vmid}/status/suspend")
+
+    async def async_container_resume(self, node: str, vmid: int) -> dict[str, Any]:
+        """Resume a suspended container."""
+        return await self.async_request("POST", f"/nodes/{node}/lxc/{vmid}/status/resume")
+
     async def async_close(self) -> None:
         """Close the API client."""
         if self._session and not self._session.closed:
