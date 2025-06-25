@@ -1,163 +1,155 @@
-# Proxmox VE Integration for Home Assistant
+# Proxmox VE Enhanced Integration for Home Assistant
 
-A Home Assistant integration for monitoring Proxmox Virtual Environment (PVE) servers, providing real-time status and resource usage information for nodes, VMs, and containers.
+This custom integration **replaces** the built-in Proxmox VE integration with enhanced functionality including VM/container controls and storage percentage monitoring.
 
-## Features
+## ✨ Features
 
-- **Node Monitoring**: Monitor the status and resource usage of Proxmox VE nodes
-- **VM Monitoring**: Track individual VM status, CPU, memory, and disk usage
-- **Container Monitoring**: Monitor LXC container status and resource utilization
-- **Multiple Server Support**: Connect to multiple Proxmox VE servers simultaneously
-- **Real-time Updates**: Data updates every 30 seconds
-- **Flexible Authentication**: Support for both password and API token authentication
+### 📊 **Enhanced Monitoring**
+- **Storage percentages**: Disk usage and free percentages for nodes, VMs, and containers
+- **Comprehensive sensors**: CPU, memory, disk, network, and system metrics
+- **Real-time status**: Live monitoring of VM/container states
 
-## Installation
+### 🎮 **VM/Container Controls**
+- **Start/Stop**: Power control for VMs and containers
+- **Graceful shutdown**: Safe shutdown operations
+- **Reboot/Reset**: Restart operations (graceful and forced)
+- **Suspend/Resume**: Pause and resume VMs and containers
+- **Smart buttons**: Context-aware controls based on current state
 
-### Option 1: Manual Installation (Recommended)
+### 🏗️ **Modern Architecture**
+- **Async operations**: Concurrent API calls for better performance
+- **Proper error handling**: Comprehensive error management
+- **Type safety**: Full type hints and data models
+- **Resource management**: Proper HTTP session handling
 
-1. Download or clone this repository
-2. Copy the `custom_components/proxmox_ve` folder to your Home Assistant `config/custom_components/` directory
-3. Restart Home Assistant
-4. Go to **Settings** → **Devices & Services** → **Add Integration**
-5. Search for "Proxmox VE" and follow the setup wizard
+## 🚀 Installation
 
-### Option 2: HACS Installation
+### Method 1: HACS (Recommended)
+1. Open HACS in Home Assistant
+2. Go to "Integrations"
+3. Click the "+" button
+4. Search for "Proxmox VE Enhanced"
+5. Install the integration
+6. Restart Home Assistant
 
-1. Install HACS if you haven't already
-2. Add this repository as a custom repository in HACS
-3. Install the Proxmox VE integration through HACS
-4. Restart Home Assistant
-5. Configure the integration through the UI
+### Method 2: Manual Installation
+1. Copy the `proxmoxve` folder to your `custom_components` directory:
+   ```
+   config/custom_components/proxmoxve/
+   ```
+2. Restart Home Assistant
+3. The integration will automatically replace the built-in one
 
-## Configuration
+## ⚙️ Configuration
 
-### Prerequisites
+### Step 1: Remove Built-in Integration (if already configured)
+1. Go to **Settings** → **Devices & Services**
+2. Find any existing "Proxmox VE" integration
+3. Click the "..." menu and select "Delete"
 
-1. **Proxmox VE Server**: A running Proxmox Virtual Environment server
-2. **API Access**: A user account with API access enabled
-3. **Network Connectivity**: Home Assistant must be able to reach your Proxmox VE server on port 8006
+### Step 2: Add Enhanced Integration
+1. Go to **Settings** → **Devices & Services**
+2. Click "**+ Add Integration**"
+3. Search for "**Proxmox VE**"
+4. Follow the configuration flow
 
-### Setup Wizard
+### Configuration Options
 
-The integration provides a user-friendly setup wizard with the following steps:
+#### Authentication Methods
+- **Password Authentication**: Username + Password
+- **Token Authentication**: Username + API Token (recommended)
 
-#### Step 1: Basic Configuration
-- **Host**: Your Proxmox VE server address and port (e.g., `192.168.1.100:8006`)
-- **Username**: Your Proxmox VE username (e.g., `root` or `root@pam`)
-- **Authentication Method**: Choose between password or token authentication
-- **Verify SSL**: Enable/disable SSL certificate verification
+#### Connection Settings
+- **Host**: IP address or hostname of Proxmox server
+- **Port**: Default 8006 (change if customized)
+- **SSL Verification**: Enable/disable SSL certificate verification
+- **Update Interval**: Polling frequency (10-300 seconds)
 
-#### Step 2A: Password Authentication
-- **Password**: Your Proxmox VE user password
+## 🔧 API Token Setup (Recommended)
 
-#### Step 2B: Token Authentication
-- **Token Name**: Name of your API token (e.g., `homeassistant`)
-- **Token Value**: The API token value
+### Create API Token in Proxmox
+1. Log into Proxmox web interface
+2. Go to **Datacenter** → **Permissions** → **API Tokens**
+3. Click **Add** to create new token
+4. Set **User** to your username
+5. Set **Token ID** to something like `homeassistant`
+6. **Uncheck** "Privilege Separation"
+7. Copy the generated **Token Secret**
 
-### Username Format
+### Configure in Home Assistant
+- **Username**: `username@pam` (or `username@pve`)
+- **Token Name**: The Token ID you created
+- **Token Value**: The generated Token Secret
 
-The integration automatically handles username formatting:
-- If you enter just `root`, it will be converted to `root@pam`
-- You can also enter the full format directly: `root@pam`, `user@ldap`, etc.
+## 📱 Usage
 
-### API Token Setup (Optional)
+### Sensors
+All sensors are automatically created for:
+- **Nodes**: CPU, memory, disk usage/percentages, load averages
+- **VMs**: CPU, memory, disk usage/percentages, uptime
+- **Containers**: CPU, memory, disk usage/percentages, uptime
 
-For enhanced security, you can use API tokens instead of passwords:
+### Control Buttons
+Control buttons appear based on current state:
+- **Running** resources: Stop, Shutdown, Reboot, Suspend
+- **Stopped** resources: Start  
+- **Suspended** resources: Resume
 
-1. In Proxmox VE web interface, go to **Datacenter** → **Permissions** → **API Tokens**
-2. Create a new token for your user
-3. Note the token name and value
-4. Use these in the integration configuration
+### Device Organization
+- Each **node**, **VM**, and **container** appears as a separate device
+- **VMs** and **containers** are linked to their parent **node**
+- All related sensors and controls are grouped by device
 
-## Sensors Created
+## 🆚 Comparison with Built-in Integration
 
-The integration creates the following sensors:
+| Feature | Built-in | Enhanced |
+|---------|----------|----------|
+| Basic monitoring | ✅ | ✅ |
+| Storage percentages | ❌ | ✅ |
+| VM/Container controls | ❌ | ✅ |
+| Modern async API | ❌ | ✅ |
+| Concurrent requests | ❌ | ✅ |
+| Type safety | ❌ | ✅ |
+| Proper error handling | ❌ | ✅ |
+| Button controls | ❌ | ✅ |
+| Smart availability | ❌ | ✅ |
 
-### Node Sensors
-- **Name**: `Proxmox VE Node {node_name} ({host})`
-- **State**: Node status (online, offline, etc.)
-- **Attributes**: CPU usage, memory usage, disk usage, uptime
+## 🔍 Troubleshooting
 
-### VM Sensors
-- **Name**: `Proxmox VE VM {vm_name} ({host})`
-- **State**: VM status (running, stopped, paused, etc.)
-- **Attributes**: CPU usage, memory usage, disk usage, uptime, node
+### Connection Issues
+- Verify Proxmox server is accessible from Home Assistant
+- Check firewall settings (port 8006)
+- Ensure credentials are correct
+- Try disabling SSL verification for self-signed certificates
 
-### Container Sensors
-- **Name**: `Proxmox VE Container {container_name} ({host})`
-- **State**: Container status (running, stopped, etc.)
-- **Attributes**: CPU usage, memory usage, disk usage, uptime, node
+### Permission Issues
+- Ensure user has sufficient privileges in Proxmox
+- For API tokens, disable "Privilege Separation"
+- Check that user can access the resources you want to monitor
 
-## Multiple Server Support
+### Performance Issues
+- Increase update interval if you have many VMs/containers
+- Check Proxmox server resources
+- Monitor Home Assistant logs for errors
 
-The integration supports connecting to multiple Proxmox VE servers:
-- Each server gets its own set of sensors
-- Sensor names include the host address for easy identification
-- No naming conflicts between different servers
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Authentication Errors**: Check your username format and credentials
-2. **Connection Errors**: Verify host address and network connectivity
-3. **No Sensors Appearing**: Check if your Proxmox VE server has VMs/containers
-
-### Debug Information
-
-Enable debug logging by adding this to your `configuration.yaml`:
-
+### Logs
+Enable debug logging by adding to `configuration.yaml`:
 ```yaml
 logger:
-  default: info
   logs:
-    custom_components.proxmox_ve: debug
+    custom_components.proxmoxve: debug
 ```
 
-### Test Script
+## 🤝 Support
 
-Use the provided `debug_proxmox.py` script to test your connection:
+- **Issues**: Report bugs and feature requests
+- **Documentation**: Check Home Assistant Proxmox VE docs
+- **Community**: Home Assistant Community Forum
 
-1. Edit the script with your credentials
-2. Run: `python3 debug_proxmox.py`
-3. Check the output for any errors
+## 📄 License
 
-## Logo and Branding
+This integration is provided as-is under the MIT License.
 
-The integration includes logo files for proper display in the Home Assistant UI:
+---
 
-- **`icon.png`**: 24x24 pixel icon used in integration cards and lists
-- **`logo.png`**: 128x128 pixel logo used on the integration page
-
-These files are based on the official Proxmox logo and are included for proper branding in the Home Assistant interface.
-
-## Requirements
-
-- Home Assistant 2023.8.0 or later
-- Python 3.9 or later
-- `proxmoxer==2.2.0`
-- `requests`
-
-## Support
-
-- **Documentation**: [GitHub Repository](https://github.com/itskodashi/hassio-integrations)
-- **Issues**: [GitHub Issues](https://github.com/itskodashi/hassio-integrations/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/itskodashi/hassio-integrations/discussions)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Changelog
-
-### Version 0.1.0
-- Initial release
-- Support for node, VM, and container monitoring
-- Password and token authentication
-- Multiple server support
-- Real-time status updates
-- Comprehensive error handling and logging
+**Note**: This enhanced integration completely replaces the built-in Proxmox VE integration. You cannot run both simultaneously.
