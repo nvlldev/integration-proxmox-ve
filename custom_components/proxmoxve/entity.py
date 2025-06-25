@@ -42,7 +42,7 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
         resource = self._get_resource()
         if resource is None:
             return DeviceInfo(
-                identifiers={(DOMAIN, f"{self._resource_type}_{self._resource_id}")},
+                identifiers={(DOMAIN, f"{self.coordinator.config_entry.entry_id}_{self._resource_type}_{self._resource_id}")},
                 name=f"Proxmox VE {display_name} {self._resource_id}",
                 manufacturer="Proxmox",
                 model=display_name,
@@ -58,7 +58,7 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
             resource_name = resource.name
 
         device_info = DeviceInfo(
-            identifiers={(DOMAIN, f"{self._resource_type}_{self._resource_id}")},
+            identifiers={(DOMAIN, f"{self.coordinator.config_entry.entry_id}_{self._resource_type}_{self._resource_id}")},
             name=f"Proxmox VE {display_name} {resource_name}",
             manufacturer="Proxmox",
             model=display_name,
@@ -67,7 +67,7 @@ class ProxmoxVEEntity(CoordinatorEntity[ProxmoxVEDataUpdateCoordinator]):
 
         # Add parent device for VMs, containers, and storage
         if self._resource_type in ("vm", "container", "storage"):
-            device_info["via_device"] = (DOMAIN, f"node_{resource.node}")
+            device_info["via_device"] = (DOMAIN, f"{self.coordinator.config_entry.entry_id}_node_{resource.node}")
 
         return device_info
 
